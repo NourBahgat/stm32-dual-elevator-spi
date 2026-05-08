@@ -11,11 +11,28 @@ typedef struct {
     uint8 Direction;    /* NONE / UP / DOWN       */
     uint8 QueueHi;      /* Request bitmask        */
     uint8 QueueLo;
-    uint8 Flags;
+    uint8 Flags;        /* The Master's commands to the Slave*/
 } Ipc_ElevatorState;
+
+/* ── Flags byte bit definitions (Ipc_ElevatorState.Flags) ─────────────
+ *
+ *  Bit 2   : IPC_FLAG_DISPATCH_REQ
+ *             Master sets this when it wants the Slave to serve a floor.
+ *             Slave clears it after calling Elevator_FSM_RequestFloor().
+ *
+ *  Bits 1:0 : IPC_FLAG_FLOOR_MASK
+ *             Encodes the target floor for the Slave: (floor - 1), range 0-3.
+ *             Valid only when IPC_FLAG_DISPATCH_REQ is set.
+ */
+#define IPC_FLAG_DISPATCH_REQ   (1U << 2)
+#define IPC_FLAG_FLOOR_MASK     (0x03U)
+#define IPC_FLAGS_ENCODE_FLOOR(f)  ((uint8)(((f) - 1U) & IPC_FLAG_FLOOR_MASK))
+#define IPC_FLAGS_DECODE_FLOOR(flags) ((uint8)(((flags) & IPC_FLAG_FLOOR_MASK) + 1U))
 
 /* Comm fault flag — read by FSM and Dispatcher */
 extern volatile uint8 Ipc_CommFault;
+
+const Ipc_ElevatorState *IPC_GetRemoteState(void);
 
 void IPC_Init(void);
 void IPC_PackFrame  (uint8 *TxBuf, const Ipc_ElevatorState *LocalState);
