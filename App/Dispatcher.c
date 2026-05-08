@@ -65,7 +65,8 @@ Dispatch_Result Dispatcher_AssignElevator(uint8 call_floor, uint8 call_direction
     const Ipc_ElevatorState *B = IPC_GetRemoteState();
 
     uint8 a_ok = elevator_available(A);
-    uint8 b_ok = elevator_available(B);
+    /* 3) Master handles calls itself using A if comms are down */
+    uint8 b_ok = elevator_available(B) && (Ipc_CommFault == 0U);
 
     /* Both elevators faulted / unavailable — defer the call */
     if (!a_ok && !b_ok) {
@@ -148,5 +149,25 @@ void Dispatcher_Tick(void)
                                        IPC_FLAGS_ENCODE_FLOOR(deferred_floor));
         }
         deferred_floor = NO_DEFERRED_CALL;
+    }
+}
+
+void Dispatcher_CheckCommFault(uint32 current_time_ms)
+{
+    /* 1) Detect timeout if no valid packet received within 150ms */
+    if ((current_time_ms - last_spi_rx_timestamp) > 150U) {
+        /* 2) Set a comm_fault flag */
+        Ipc_CommFault = 1U;
+        
+        /* 3) Switch dispatch mode: This is achieved via the condition
+         *    b_ok = elevator_available(B) && (Ipc_CommFault == 0U)
+         *    inside Dispatcher_AssignElevator(). By forcing B to be
+         *    unavailable, the Master handles all calls natively on A. */
+    } else {
+        /* 4) Recover automatically when valid packets resume */
+        if (Ipc_CommFault == 1U) {
+            Ipc_CommFault = 0U;
+            /* TODO: FSM status check needed here */
+        }
     }
 }

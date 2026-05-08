@@ -3,6 +3,7 @@
 #include "Elevator_FSM.h"   /* to read local state */
 
 volatile uint8 Ipc_CommFault = 0U;
+volatile uint32 last_spi_rx_timestamp = 0U;
 
 static uint8            ipc_TxBuf[SPI_FRAME_SIZE];
 static uint8            ipc_RxBuf[SPI_FRAME_SIZE];

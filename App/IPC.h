@@ -31,6 +31,7 @@ typedef struct {
 
 /* Comm fault flag — read by FSM and Dispatcher */
 extern volatile uint8 Ipc_CommFault;
+extern volatile uint32 last_spi_rx_timestamp;
 
 const Ipc_ElevatorState *IPC_GetRemoteState(void);
 

@@ -40,4 +40,10 @@ Dispatch_Result Dispatcher_AssignElevator(uint8 call_floor, uint8 call_direction
  */
 void Dispatcher_Tick(void);
 
+/**
+ * @brief  Checks for SPI communication timeout and switches dispatch mode if needed.
+ * @param  current_time_ms Current system uptime in milliseconds.
+ */
+void Dispatcher_CheckCommFault(uint32 current_time_ms);
+
 #endif /* DISPATCHER_H */
