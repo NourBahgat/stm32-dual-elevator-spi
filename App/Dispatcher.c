@@ -4,11 +4,11 @@
  * Master-MCU task-allocation algorithm for the dual-elevator system.
  *
  *  Elevator A = this MCU's own elevator   → localState        (Elevator_FSM.c)
- *  Elevator B = remote slave elevator     → IPC_GetRemoteState() (IPC.c)
+ *  Elevator B = remote slave elevator     → IPC_GetRemoteStateSnapshot() (IPC.c)
  */
 
 #include "Dispatcher.h"
-/* IPC_GetRemoteState() is declared in Ipc.h (included via Dispatcher.h) */
+/* IPC_GetRemoteStateSnapshot() is declared in Ipc.h (included via Dispatcher.h) */
 
 /* ── Deferred-call store (single pending call) ────────────────────── */
 #define NO_DEFERRED_CALL  0U
@@ -62,7 +62,10 @@ Dispatch_Result Dispatcher_AssignElevator(uint8 call_floor, uint8 call_direction
     /* --- Obtain pointers to both elevators' states ---------------------- */
     const Ipc_ElevatorState *A = &localState;
 
-    const Ipc_ElevatorState *B = IPC_GetRemoteState();
+    /* Take an atomic snapshot of B's state to prevent ISR race conditions */
+    Ipc_ElevatorState b_snapshot;
+    IPC_GetRemoteStateSnapshot(&b_snapshot);
+    const Ipc_ElevatorState *B = &b_snapshot;
 
     uint8 a_ok = elevator_available(A);
     /* 3) Master handles calls itself using A if comms are down */

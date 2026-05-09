@@ -11,7 +11,13 @@ static Ipc_ElevatorState ipc_RemoteState;
 static volatile uint8   ipc_TimeoutCounter = 0U;
 #define IPC_TIMEOUT_TICKS   5U   /* 5 x 50ms = 250ms with no valid frame */
 
-const Ipc_ElevatorState *IPC_GetRemoteState(void) { return &ipc_RemoteState; }
+#include "Utils.h"
+
+void IPC_GetRemoteStateSnapshot(Ipc_ElevatorState *snapshot) {
+    Enter_Critical();
+    *snapshot = ipc_RemoteState;
+    Exit_Critical();
+}
 
 void IPC_Init(void) {
     Spi1_RegisterCallback(IPC_OnFrameReceived);

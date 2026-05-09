@@ -33,7 +33,7 @@ typedef struct {
 extern volatile uint8 Ipc_CommFault;
 extern volatile uint32 last_spi_rx_timestamp;
 
-const Ipc_ElevatorState *IPC_GetRemoteState(void);
+void IPC_GetRemoteStateSnapshot(Ipc_ElevatorState *snapshot);
 
 void IPC_Init(void);
 void IPC_PackFrame  (uint8 *TxBuf, const Ipc_ElevatorState *LocalState);
