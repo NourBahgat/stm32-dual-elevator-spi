@@ -29,5 +29,6 @@ void Elevator_FSM_Init(uint8 startFloor);
 void Elevator_FSM_Tick(void);
 void Elevator_FSM_RequestFloor(uint8 floor);
 void Elevator_FSM_SetFault(void);
+Ipc_ElevatorState Elevator_FSM_GetSnapshot(void);
 
 #endif /* ELEVATOR_FSM_H */
