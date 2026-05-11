@@ -16,14 +16,46 @@
  */
 
 #include "System.h"
-#include "Rcc.h"
+#include "Bit_Operations.h"
+#include "Exti.h"
 #include "Gpio.h"
 #include "Nvic.h"
-#include "Timer.h"
 #include "Pwm.h"
+#include "Rcc.h"
+#include "Timer.h"
+#include "Timer_Private.h"   /* TimerType, TIM5_BASE_ADDR, SR_UIF */
 #include "Usart.h"
-#include "Exti.h"
-#include "Bit_Operations.h"
+#include "Utils.h"           /* REG32, Enter_Critical, Exit_Critical */
+
+/* TIM5 register access via base address */
+#define TIM5  ((TimerType *)TIM5_BASE_ADDR)
+
+/* -------------------------------------------------------------------------
+ * SysTick_Config_Local
+ *
+ * Configures the ARM SysTick timer directly via its memory-mapped registers.
+ * The CMSIS SysTick_Config() requires an NVIC header that conflicts with this
+ * project's custom NVIC driver, so we configure it manually here.
+ *
+ * Registers (ARM Cortex-M4 TRM):
+ *   0xE000E014  SYST_RVR  — Reload Value Register   (ticks per period)
+ *   0xE000E018  SYST_CVR  — Current Value Register  (reset to 0)
+ *   0xE000E010  SYST_CSR  — Control/Status Register
+ *     bit 0 ENABLE   = 1  (counter running)
+ *     bit 1 TICKINT  = 1  (generate SysTick exception)
+ *     bit 2 CLKSOURCE= 1  (processor clock, not external)
+ *     → write 0x7
+ * ------------------------------------------------------------------------- */
+static void SysTick_Config_Local(uint32 ticks)
+{
+    volatile uint32 *SYST_RVR = (volatile uint32 *)0xE000E014U;
+    volatile uint32 *SYST_CVR = (volatile uint32 *)0xE000E018U;
+    volatile uint32 *SYST_CSR = (volatile uint32 *)0xE000E010U;
+
+    *SYST_RVR = (ticks - 1U);   /* reload value        */
+    *SYST_CVR = 0U;              /* clear current value */
+    *SYST_CSR = 0x7U;            /* enable, use processor clock, generate IRQ */
+}
 
 /* ========================================================================
  * Global Time Counter (SysTick ISR increments this)
@@ -33,8 +65,8 @@ volatile uint32 system_time_ms = 0;
 /* ========================================================================
  * Event Flags (ISRs set these, application clears)
  * ======================================================================== */
-volatile uint8 flag_1ms_tick = 0;
-volatile uint8 flag_10ms_tick = 0;
+volatile uint8 flag_1ms_tick   = 0;
+volatile uint8 flag_10ms_tick  = 0;
 volatile uint8 flag_100ms_tick = 0;
 volatile uint8 flag_500ms_tick = 0;
 
@@ -42,7 +74,7 @@ volatile uint8 flag_500ms_tick = 0;
  * Scheduler State (main loop tracking)
  * Used to generate 10ms and 100ms ticks from 1ms SysTick
  * ======================================================================== */
-static uint32 last_10ms_tick = 0;
+static uint32 last_10ms_tick  = 0;
 static uint32 last_100ms_tick = 0;
 
 /* ========================================================================
@@ -50,15 +82,8 @@ static uint32 last_100ms_tick = 0;
  *
  * Called every 1 ms by the hardware timer.
  * CRITICAL: Keep this under 2 µs execution time.
- *
- * Responsibilities:
- *   1. Increment system_time_ms
- *   2. Return immediately (let main loop do the work)
- *
- * Do NOT put prescaler logic or state variables here.
  * ======================================================================== */
-void SysTick_Handler(void)
-{
+void SysTick_Handler(void) {
     system_time_ms++;
     flag_1ms_tick = 1;
 }
@@ -66,46 +91,26 @@ void SysTick_Handler(void)
 /* ========================================================================
  * TIM5_IRQHandler
  *
- * Called every 500 ms by TIM5 (configured with ARPE auto-reload).
+ * Called every 500 ms by TIM5.
  * CRITICAL: Keep this under 2 µs execution time.
- *
- * TIM5 is configured as:
- *   PSC = 15,999 (divide 16 MHz by 16,000 → 1 kHz)
- *   ARR = 499    (count 0-499 → overflow every 500 ticks = 500 ms)
- *   ARPE enabled (auto-reload preload)
- *
- * With ARPE, TIM5 automatically reloads ARR at each overflow and
- * continues firing every 500 ms without manual re-enable.
  * ======================================================================== */
-void TIM5_IRQHandler(void)
-{
-    /* Check update interrupt flag (UIF) */
+void TIM5_IRQHandler(void) {
+    /* Check update interrupt flag (UIF, bit 0 of SR) */
     if (READ_BIT(TIM5->SR, SR_UIF)) {
-        TIM5->SR = 0;              /* Clear UIF */
-        flag_500ms_tick = 1;       /* Signal application */
-        /* NO interrupt disable — TIM5 runs continuously via ARPE */
+        TIM5->SR = 0;        /* Clear UIF                          */
+        flag_500ms_tick = 1; /* Signal application layer           */
     }
 }
 
 /* ========================================================================
- * System_Scheduler_Task
- *
- * Runs from main loop to generate 10ms and 100ms ticks.
- * This is NOT in an ISR — it's safe to have more complex logic here.
- *
- * Uses simple polling of system_time_ms with saved checkpoints.
- * More deterministic than prescalers in ISR.
+ * System_Scheduler_Task (private)
  * ======================================================================== */
-static void System_Scheduler_Task(void)
-{
-    /* 10ms tick */
-    if (system_time_ms - last_10ms_tick >= 10) {
+static void System_Scheduler_Task(void) {
+    if (system_time_ms - last_10ms_tick >= 10U) {
         last_10ms_tick = system_time_ms;
         flag_10ms_tick = 1;
     }
-
-    /* 100ms tick */
-    if (system_time_ms - last_100ms_tick >= 100) {
+    if (system_time_ms - last_100ms_tick >= 100U) {
         last_100ms_tick = system_time_ms;
         flag_100ms_tick = 1;
     }
@@ -113,14 +118,8 @@ static void System_Scheduler_Task(void)
 
 /* ========================================================================
  * System_Tick_500ms
- *
- * Called by the main loop when flag_500ms_tick is set.
- * This is the application-layer 500 ms scheduling point.
  * ======================================================================== */
-void System_Tick_500ms(void)
-{
-    Application_500ms_Tick();
-}
+void System_Tick_500ms(void) { Application_500ms_Tick(); }
 
 /* ========================================================================
  * System_Init
@@ -128,105 +127,94 @@ void System_Tick_500ms(void)
  * One-time initialization of all subsystems.
  * Called from main() before entering the event loop.
  *
- * Order is critical:
- *   1. Clock tree (enables peripherals)
- *   2. GPIO (configure pins)
- *   3. Interrupt priorities (NVIC)
- *   4. Drivers (Timer, UART, PWM, EXTI)
- *   5. ISR enable
- *   6. Start timers
+ * Order:
+ *   1. Clock tree  (enables peripherals)
+ *   2. NVIC priorities
+ *   3. Peripheral drivers (UART, Timer, PWM)
+ *   4. Enable IRQs
+ *   5. Start timers / SysTick
  * ======================================================================== */
-void System_Init(void)
-{
+void System_Init(void) {
+
     /* ---- 1. Clock Tree ------------------------------------------------ */
-    Rcc_Init();  /* APB1, APB2, HSI configuration */
+    Rcc_Init();   /* APB1, APB2, HSI configuration */
 
-    /* ---- 2. GPIO Configuration ---------------------------------------- */
-    Gpio_Init();  /* All pins: buttons, LEDs, motor outputs, UART, SPI, etc. */
+    /* ---- 2. NVIC Priority Configuration ------------------------------- */
+    /* SysTick has a fixed priority of 15 in ARM Cortex-M.
+     * We only configure the priorities we explicitly need: */
+    Nvic_SetPriority(TIM5_IRQn,   2U);  /* 500 ms scheduler     */
+    Nvic_SetPriority(USART1_IRQn, 3U);  /* UART telemetry RX    */
+    /* Emergency Stop (EXTI15) priority = 0 is set in Elevator_FSM_Init() */
 
-    /* ---- 3. NVIC Priority Configuration ------------------------------- */
-    Nvic_Init();  /* Set interrupt priorities (SysTick > TIM5 > EXTI) */
+    /* ---- 3. Driver Initialization ------------------------------------- */
 
-    /* ---- 4. Driver Initialization ------------------------------------- */
-
-    /* UART for telemetry */
+    /* UART for telemetry (sets up PA9/PA10 as TX/RX AF7, enables RXNEIE) */
     Usart1_Init();
 
-    /* Timer: TIM5 for 500ms periodic event */
-    Timer_Init(TIMER5, 15999, 499);  /* 500 ms period */
+    /* TIM5: 500 ms period
+     *   PSC = 15999 → f_cnt = 16 MHz / 16000 = 1 kHz
+     *   ARR = 499   → overflow every 500 ticks = 500 ms */
+    Timer_Init(TIMER5, 15999U, 499U);
 
-    /* PWM: TIM2 for motor control (10 kHz)
-     * 16 MHz / (15 + 1) = 1 MHz timer clock
-     * 1 MHz / (99 + 1) = 10 kHz PWM period
-     * Duty mapping remains fixed-point: CCR = (DutyPercent * ARR) / 100
-     */
-    Pwm_Init(TIMER2, PWM_CHANNEL_1, 15, 99);   /* CH1 = Motor A */
-    Pwm_Init(TIMER2, PWM_CHANNEL_2, 15, 99);   /* CH2 = Motor B */
+    /* PWM on TIM2 for motor LED simulation (10 kHz)
+     *   PSC = 15  → f_cnt = 16 MHz / 16 = 1 MHz
+     *   ARR = 99  → PWM period = 100 µs = 10 kHz */
+    Gpio_Init(GPIO_A, 0U, GPIO_AF, GPIO_PUSH_PULL);  /* PA0 = TIM2_CH1 */
+    Gpio_SetAF(GPIO_A, 0U, GPIO_AF1);
+    Gpio_Init(GPIO_A, 1U, GPIO_AF, GPIO_PUSH_PULL);  /* PA1 = TIM2_CH2 */
+    Gpio_SetAF(GPIO_A, 1U, GPIO_AF1);
+
+    Pwm_Init(TIMER2, PWM_CHANNEL_1, 15U, 99U);  /* Motor A */
+    Pwm_Init(TIMER2, PWM_CHANNEL_2, 15U, 99U);  /* Motor B */
     Pwm_Start(TIMER2, PWM_CHANNEL_1);
     Pwm_Start(TIMER2, PWM_CHANNEL_2);
 
-    /* External interrupts (hall call buttons) */
-    /* Exti_Init() — if implemented in your Exti driver */
-
-    /* ---- 5. Enable ISRs in NVIC -------------------------------------- */
+    /* ---- 4. Enable IRQs ----------------------------------------------- */
     Nvic_EnableIrq(TIM5_IRQn);
-    /* USART1_IRQn already enabled in Usart1_Init() */
-    /* EXTI ISRs enabled in Exti_Init() or per-pin */
+    /* USART1_IRQn enabled inside Usart1_Init() */
+    /* EXTI IRQs enabled inside Elevator_FSM_Init() and HallCallButtons_Init() */
 
-    /* ---- 6. Start Periodic Timers ------------------------------------- */
+    /* ---- 5. Start Timers ---------------------------------------------- */
     Timer_Start(TIMER5);
 
-    /* SysTick: 1 kHz (1 ms per tick)
-     * SysTick_LOAD = (16 MHz / 1000) - 1 = 15,999
-     */
-    SysTick_Config(16000 - 1);
-
-    /* ---- System is now running ---------------------------------------- */
-    /* All ISRs are active and will set flags as events occur.
-     * Main loop will poll these flags and execute application logic.
-     */
+    /* SysTick: 1 kHz → interrupt every 1 ms
+     *   LOAD = 16 MHz / 1000 = 16000 counts */
+    SysTick_Config_Local(16000U);
 }
 
 /* ========================================================================
- * System_MainLoop
+ * System_MainLoop_Iteration
  *
- * The main event-driven loop.
- * Called from main() after System_Init().
- *
- * Pattern:
- *   while (1) {
- *       System_MainLoop_Iteration();
- *   }
+ * Single iteration of the event loop. Called from while(1) in main().
  * ======================================================================== */
-void System_MainLoop_Iteration(void)
-{
-    /* Check for 1ms tick (usually not needed, but available) */
+void System_MainLoop_Iteration(void) {
+
+    /* 1 ms tick — available for fine-grained tasks if needed */
     if (flag_1ms_tick) {
         flag_1ms_tick = 0;
-        /* Optional: 1ms tasks */
     }
 
-    /* Generate 10ms and 100ms ticks from SysTick */
+    /* Generate derived 10 ms and 100 ms ticks */
     System_Scheduler_Task();
 
-    /* 10ms periodic tasks (motor ramping, button debouncing) */
+    /* 10 ms: motor PWM ramping */
     if (flag_10ms_tick) {
         flag_10ms_tick = 0;
         Application_10ms_Tick();
     }
 
-    /* 100ms periodic tasks (health checks) */
+    /* 100 ms: comms health check */
     if (flag_100ms_tick) {
         flag_100ms_tick = 0;
         Application_100ms_Tick();
     }
 
-    /* 500ms periodic tasks (FSM, Dispatcher, Telemetry) */
+    /* 500 ms: FSM tick, Dispatcher, Telemetry */
     if (flag_500ms_tick) {
         flag_500ms_tick = 0;
         System_Tick_500ms();
     }
 
-    /* Low-priority background tasks (if any) */
+    /* Background: low-priority tasks (UART drain, button debounce) */
     Application_BackgroundTick();
 }

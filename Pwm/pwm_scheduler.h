@@ -3,14 +3,15 @@
 
 #include <stdint.h>
 #include "Pwm.h"
+#include "Elevator_FSM.h"
 
 /* Elevator states (from FSM) */
 typedef enum {
-    ELEV_IDLE = 0,
-    ELEV_MOVING_UP,
-    ELEV_MOVING_DOWN,
-    ELEV_DOORS_OPEN,
-    ELEV_EMERGENCY
+    ELEV_IDLE = FSM_IDLE,
+    ELEV_MOVING_UP = FSM_MOVING_UP,
+    ELEV_MOVING_DOWN = FSM_MOVING_DOWN,
+    ELEV_DOORS_OPEN = FSM_DOORS_OPEN,
+    ELEV_EMERGENCY = FSM_EMERGENCY
 } ElevatorState_t;
 
 /* Motor control context */

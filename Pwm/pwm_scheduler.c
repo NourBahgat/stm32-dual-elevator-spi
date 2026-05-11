@@ -9,7 +9,7 @@ static uint8 StateToDuty(ElevatorState_t state)
     {
         case ELEV_MOVING_UP:
         case ELEV_MOVING_DOWN:
-            return 20;   /* slow movement */
+            return 100;  /* full speed travel */
 
         case ELEV_IDLE:
         case ELEV_DOORS_OPEN:

@@ -16,6 +16,7 @@
 #define SYSTEM_H
 
 #include "Std_Types.h"
+#include "Timer.h"
 
 /* ========================================================================
  * Global Time Counter
@@ -72,5 +73,10 @@ void Application_BackgroundTick(void);
  * NOT called from ISR — runs in main loop context (safe).
  * ======================================================================== */
 void System_Tick_500ms(void);
+
+/**
+ * Single iteration of the event loop. Called from while(1) in main().
+ */
+void System_MainLoop_Iteration(void);
 
 #endif /* SYSTEM_H */
