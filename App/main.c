@@ -86,6 +86,7 @@ static inline void MotorControl_10ms(void)
 
     /* snapshot */
     fsm_snapshot = Elevator_FSM_GetSnapshot();
+    fsm_snapshot.MotorDuty = motor_a.current_duty;
 
     /* motor control */
     PwmScheduler_UpdateState(&motor_a, fsm_snapshot.State);
@@ -127,19 +128,17 @@ void Application_500ms_Tick(void)
     if (dma_busy)
         return;
 
-    Ipc_ElevatorState local = fsm_snapshot;
+    Ipc_ElevatorState local_snapshot = fsm_snapshot;
 
-    Telemetry_BuildFrame(tx_next,
-                         local.State,
-                         local.Floor,
-                         motor_a.current_duty,
-                         local.Flags);
+    Telemetry_BuildFrame(&tx_next,
+                        local_snapshot.State,
+                        local_snapshot.Floor,
+                        local_snapshot.MotorDuty,
+                        local_snapshot.Flags);
 
     dma_busy = 1;
-
-    Telemetry_SendDMA(tx_next);
+    Telemetry_SendDMA(&tx_next);
 }
-
 /* =========================================================
  * DMA complete callback
  * ========================================================= */

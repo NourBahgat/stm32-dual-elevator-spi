@@ -38,6 +38,7 @@ typedef struct {
   uint8 QueueHi;   /* Request bitmask        */
   uint8 QueueLo;
   uint8 Flags; /* The Master's commands to the Slave*/
+  uint8 MotorDuty; /* For telemetry only: Master's motor duty (0-100) */
 } Ipc_ElevatorState;
 
 /* ── Flags byte bit definitions (Ipc_ElevatorState.Flags) ─────────────
