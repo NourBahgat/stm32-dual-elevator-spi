@@ -3,6 +3,7 @@
 
 #include "Spi.h"
 #include "Std_Types.h"
+#include "board_config.h"   /* IS_MASTER() / IS_SLAVE() */
 
 /* ── SPI Frame Layout (8 bytes, fixed-length) ───────────────────────────
  * Byte 0 : Header     = SPI_HEADER_BYTE (sync word)
@@ -67,7 +68,14 @@ uint8 IPC_ValidateFrame(const uint8 *RxBuf);
 void IPC_UnpackFrame(const uint8 *RxBuf, Ipc_ElevatorState *RemoteState);
 void IPC_OnFrameReceived(uint8 *RxBuf); /* registered as SPI callback */
 
-/* Master only: call from 50ms timer ISR */
+/* Master only: initiate SPI exchange and check for comm fault */
+#if IS_MASTER()
 void IPC_MasterTick(void);
+#endif
+
+/* Slave only: detect Master comm fault and enter emergency mode */
+#if IS_SLAVE()
+void IPC_SlaveTick(void);
+#endif
 
 #endif

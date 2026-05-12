@@ -4,14 +4,16 @@
 #include "Std_Types.h"
 
 /*
- * Hardware mapping (6 buttons, active-HIGH on falling edge with pull-up):
+ * Hardware mapping (6 buttons, active-LOW on falling edge with pull-up):
  *
- *   Floor 1 UP   → PA0  (EXTI_LINE_0)
- *   Floor 2 UP   → PA1  (EXTI_LINE_1)
- *   Floor 2 DOWN → PA2  (EXTI_LINE_2)
- *   Floor 3 UP   → PA3  (EXTI_LINE_3)
- *   Floor 3 DOWN → PA4  (EXTI_LINE_4)
- *   Floor 4 DOWN → PA5  (EXTI_LINE_5)
+ *   Floor 1 UP   → PC0  (EXTI_LINE_0)
+ *   Floor 2 UP   → PC1  (EXTI_LINE_1)
+ *   Floor 2 DOWN → PC2  (EXTI_LINE_2)
+ *   Floor 3 UP   → PC3  (EXTI_LINE_3)
+ *   Floor 3 DOWN → PC4  (EXTI_LINE_4)
+ *   Floor 4 DOWN → PC5  (EXTI_LINE_5)
+ *
+ * NOTE: PA0/PA1 are reserved for TIM2 CH1/CH2 PWM (motor LEDs).
  *
  * Each ISR writes one HallCall entry into a volatile ring buffer.
  * The main loop drains the buffer and calls Dispatcher_AssignElevator().

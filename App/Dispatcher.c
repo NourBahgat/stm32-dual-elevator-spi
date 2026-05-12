@@ -65,26 +65,26 @@ Dispatch_Result Dispatcher_AssignElevator(uint8 call_floor,
   const Ipc_ElevatorState *B = &b_snapshot;
 
   uint8 a_ok = elevator_available(A);
-  /* 3) Master handles calls itself using A if comms are down */
+  /* Comm fault: exclude Slave B so Master A handles all calls alone. */
   uint8 b_ok = elevator_available(B) && (Ipc_CommFault == 0U);
 
   /* Both elevators faulted / unavailable — defer the call */
   if (!a_ok && !b_ok) {
-    deferred_floor = call_floor;
+    deferred_floor     = call_floor;
     deferred_direction = call_direction;
     return DISPATCH_NONE;
   }
 
-  /* ── P1: elevator already at call floor AND IDLE ─────────────────────
-   *        Best case — zero travel required.                        */
+  /* ── P1: Immediate — elevator already at call floor AND IDLE ──────────
+   *        Best case — zero travel required.                         */
   if (a_ok && A->State == FSM_IDLE && A->Floor == call_floor)
     return DISPATCH_A;
   if (b_ok && B->State == FSM_IDLE && B->Floor == call_floor)
     return DISPATCH_B;
 
-  /* ── P2: elevator moving toward call floor in the same direction ──────
-   *        Uses Floor + Direction from Ipc_ElevatorState only.
-   *        If both qualify, pick the one closer to the call floor.  */
+  /* ── P2: Perfect Match — moving toward the floor in the same direction
+   *        Elevator has not yet passed the call floor.
+   *        If both qualify, pick the one closer to the call floor.   */
   {
     uint8 a_toward = a_ok && moving_toward(A, call_floor, call_direction);
     uint8 b_toward = b_ok && moving_toward(B, call_floor, call_direction);
@@ -95,14 +95,39 @@ Dispatch_Result Dispatcher_AssignElevator(uint8 call_floor,
                  ? DISPATCH_A
                  : DISPATCH_B;
     }
-    if (a_toward)
-      return DISPATCH_A;
-    if (b_toward)
-      return DISPATCH_B;
+    if (a_toward) return DISPATCH_A;
+    if (b_toward) return DISPATCH_B;
   }
 
-  /* ── P3: Nearest IDLE elevator ────────────────────────────────────────
-   *        No elevator is en-route; send whichever idle elevator is closest. */
+  /* ── P3: Passed Match — same direction but car has already passed ─────
+   *        Lower priority than Perfect Match; fires only when no P2
+   *        candidate exists.  Pick the geometrically closer one.    */
+  {
+    uint8 a_passed =
+        a_ok &&
+        ((A->State == FSM_MOVING_UP   && call_direction == DIR_UP   &&
+          call_floor < A->Floor) ||
+         (A->State == FSM_MOVING_DOWN && call_direction == DIR_DOWN &&
+          call_floor > A->Floor));
+    uint8 b_passed =
+        b_ok &&
+        ((B->State == FSM_MOVING_UP   && call_direction == DIR_UP   &&
+          call_floor < B->Floor) ||
+         (B->State == FSM_MOVING_DOWN && call_direction == DIR_DOWN &&
+          call_floor > B->Floor));
+
+    if (a_passed && b_passed) {
+      return (floor_dist(A->Floor, call_floor) <=
+              floor_dist(B->Floor, call_floor))
+                 ? DISPATCH_A
+                 : DISPATCH_B;
+    }
+    if (a_passed) return DISPATCH_A;
+    if (b_passed) return DISPATCH_B;
+  }
+
+  /* ── P4: Nearest IDLE elevator ────────────────────────────────────────
+   *        No elevator is en-route; send whichever idle one is closest. */
   {
     uint8 a_idle = a_ok && (A->State == FSM_IDLE);
     uint8 b_idle = b_ok && (B->State == FSM_IDLE);
@@ -113,20 +138,40 @@ Dispatch_Result Dispatcher_AssignElevator(uint8 call_floor,
                  ? DISPATCH_A
                  : DISPATCH_B;
     }
-    if (a_idle)
-      return DISPATCH_A;
-    if (b_idle)
-      return DISPATCH_B;
+    if (a_idle) return DISPATCH_A;
+    if (b_idle) return DISPATCH_B;
   }
 
-  /* ── P4: Fallback — both elevators going in the opposite direction ────
-   *        Assign to geometrically closer elevator; it will queue the
-   *        request and service it after reversing.
-   *        No round-robin counter — decision is purely state-based.  */
-  if (!a_ok)
-    return DISPATCH_B;
-  if (!b_ok)
-    return DISPATCH_A;
+  /* ── P5: Opposite Direction — defer rather than assign against travel ──
+   *        If every available elevator is moving AWAY from the call
+   *        direction, defer and let Dispatcher_Tick() retry once one
+   *        finishes and goes IDLE.                                   */
+  {
+    uint8 a_opposite =
+        a_ok &&
+        ((A->State == FSM_MOVING_UP   && call_direction == DIR_DOWN) ||
+         (A->State == FSM_MOVING_DOWN && call_direction == DIR_UP));
+    uint8 b_opposite =
+        b_ok &&
+        ((B->State == FSM_MOVING_UP   && call_direction == DIR_DOWN) ||
+         (B->State == FSM_MOVING_DOWN && call_direction == DIR_UP));
+
+    /* All available elevators are going the wrong way — defer */
+    if ((a_ok ? a_opposite : 1U) && (b_ok ? b_opposite : 1U)) {
+      deferred_floor     = call_floor;
+      deferred_direction = call_direction;
+      return DISPATCH_NONE;
+    }
+    /* At least one is NOT going the wrong way — prefer it */
+    if (b_opposite && !a_opposite && a_ok) return DISPATCH_A;
+    if (a_opposite && !b_opposite && b_ok) return DISPATCH_B;
+  }
+
+  /* ── P6: Absolute fallback ─────────────────────────────────────────────
+   *        Remaining cases: DOORS_OPEN on both, or mixed states not
+   *        covered above.  Assign closest available elevator.        */
+  if (!a_ok) return DISPATCH_B;
+  if (!b_ok) return DISPATCH_A;
 
   return (floor_dist(A->Floor, call_floor) <= floor_dist(B->Floor, call_floor))
              ? DISPATCH_A
@@ -165,21 +210,20 @@ void Dispatcher_Tick(void) {
   }
 }
 
-void Dispatcher_CheckCommFault(uint32 current_time_ms) {
-  /* 1) Detect timeout if no valid packet received within 150ms */
-  if ((current_time_ms - last_spi_rx_timestamp) > 150U) {
-    /* 2) Set a comm_fault flag */
-    Ipc_CommFault = 1U;
-
-    /* 3) Switch dispatch mode: This is achieved via the condition
-     *    b_ok = elevator_available(B) && (Ipc_CommFault == 0U)
-     *    inside Dispatcher_AssignElevator(). By forcing B to be
-     *    unavailable, the Master handles all calls natively on A. */
-  } else {
-    /* 4) Recover automatically when valid packets resume */
-    if (Ipc_CommFault == 1U) {
-      Ipc_CommFault = 0U;
-      /* TODO: FSM status check needed here */
-    }
-  }
-}
+/*
+ * Dispatcher_CheckCommFault — REMOVED.
+ *
+ * Comm-fault detection and auto-recovery are handled entirely inside
+ * IPC.c by the IPC_MasterTick / IPC_OnFrameReceived pair:
+ *
+ *   IPC_MasterTick()       increments ipc_TimeoutCounter every 50 ms and
+ *                          sets Ipc_CommFault = 1 after 5 missed frames.
+ *   IPC_OnFrameReceived()  resets ipc_TimeoutCounter = 0 and
+ *                          Ipc_CommFault = 0 on every valid SPI frame.
+ *
+ * A duplicate mechanism here used last_spi_rx_timestamp (which was never
+ * written) and could race with and incorrectly clear a genuine fault flag
+ * set by IPC_MasterTick.  It has been removed to avoid that race.
+ *
+ * Callers (Application_100ms_Tick in main.c) have been updated accordingly.
+ */

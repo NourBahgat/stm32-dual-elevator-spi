@@ -2,13 +2,13 @@
  * Each ISR callback ONLY writes into HallCallBuf — no FSM, no Dispatcher.
  * The main loop calls HallCallButtons_Process() to consume the buffer.
  *
- * Pin/line mapping:
- *   PA0  LINE_0  → Floor 1 UP
- *   PA1  LINE_1  → Floor 2 UP
- *   PA2  LINE_2  → Floor 2 DOWN
- *   PA3  LINE_3  → Floor 3 UP
- *   PA4  LINE_4  → Floor 3 DOWN
- *   PA5  LINE_5  → Floor 4 DOWN
+ * Pin/line mapping (Port C — PA0/PA1 reserved for TIM2 PWM):
+ *   PC0  LINE_0  → Floor 1 UP
+ *   PC1  LINE_1  → Floor 2 UP
+ *   PC2  LINE_2  → Floor 2 DOWN
+ *   PC3  LINE_3  → Floor 3 UP
+ *   PC4  LINE_4  → Floor 3 DOWN
+ *   PC5  LINE_5  → Floor 4 DOWN
  */
 
 #include "HallCallButtons.h"
@@ -16,6 +16,7 @@
 #include "Dispatcher.h"     /* Dispatcher_AssignElevator, Dispatch_Result */
 #include "Gpio.h"
 #include "Exti.h"
+#include "Utils.h"          /* Enter_Critical / Exit_Critical             */
 
 /* ── Shared ring buffer ───────────────────────────────────────────── */
 HallCallRingBuf HallCallBuf = { .Head = 0U, .Tail = 0U };
@@ -29,13 +30,21 @@ HallCallRingBuf HallCallBuf = { .Head = 0U, .Tail = 0U };
  */
 static void buf_push(uint8 floor, uint8 direction)
 {
+    /*
+     * CONCURRENCY: Head is read-modify-written here (3 instructions: not atomic).
+     * Two EXTI ISRs at different NVIC priorities can preempt each other and
+     * corrupt the index.  Enter_Critical() disables all maskable interrupts
+     * for the duration of the index update, making the write atomic.
+     */
+    Enter_Critical();
     uint8 next_head = (uint8)((HallCallBuf.Head + 1U) & (HALL_CALL_BUF_SIZE - 1U));
-    if (next_head == HallCallBuf.Tail) {
-        return;  /* buffer full — drop */
+    if (next_head != HallCallBuf.Tail) {          /* not full — write entry */
+        HallCallBuf.Calls[HallCallBuf.Head].Floor     = floor;
+        HallCallBuf.Calls[HallCallBuf.Head].Direction = direction;
+        HallCallBuf.Head = next_head;
     }
-    HallCallBuf.Calls[HallCallBuf.Head].Floor     = floor;
-    HallCallBuf.Calls[HallCallBuf.Head].Direction = direction;
-    HallCallBuf.Head = next_head;
+    /* else: buffer full — silently drop (same policy as before) */
+    Exit_Critical();
 }
 
 /* ── ISR callbacks (registered with Exti_Init) ────────────────────── */
@@ -53,25 +62,26 @@ static void ISR_Floor4_Down(void) { buf_push(4U, DIR_DOWN);  }
 void HallCallButtons_Init(void)
 {
     /*
-     * Step 1 – configure pins as digital inputs.
+     * Step 1 – configure PC0–PC5 as digital inputs (pull-up).
      */
-    Gpio_Init(GPIO_A, 0U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 1 UP   */
-    Gpio_Init(GPIO_A, 1U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 2 UP   */
-    Gpio_Init(GPIO_A, 2U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 2 DOWN */
-    Gpio_Init(GPIO_A, 3U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 3 UP   */
-    Gpio_Init(GPIO_A, 4U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 3 DOWN */
-    Gpio_Init(GPIO_A, 5U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 4 DOWN */
+    Gpio_Init(GPIO_C, 0U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 1 UP   */
+    Gpio_Init(GPIO_C, 1U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 2 UP   */
+    Gpio_Init(GPIO_C, 2U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 2 DOWN */
+    Gpio_Init(GPIO_C, 3U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 3 UP   */
+    Gpio_Init(GPIO_C, 4U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 3 DOWN */
+    Gpio_Init(GPIO_C, 5U, GPIO_INPUT, GPIO_PULL_UP);  /* Floor 4 DOWN */
 
     /*
      * Step 2 – route each GPIO line through SYSCFG and register callback.
      *           EXTI_EDGE_FALLING: buttons pull line LOW when pressed.
+     *           Port source for PC = EXTI_PORT_C (SYSCFG_EXTICR value 0x02).
      */
-    Exti_Init(EXTI_LINE_0, EXTI_PORT_A, EXTI_EDGE_FALLING, ISR_Floor1_Up);
-    Exti_Init(EXTI_LINE_1, EXTI_PORT_A, EXTI_EDGE_FALLING, ISR_Floor2_Up);
-    Exti_Init(EXTI_LINE_2, EXTI_PORT_A, EXTI_EDGE_FALLING, ISR_Floor2_Down);
-    Exti_Init(EXTI_LINE_3, EXTI_PORT_A, EXTI_EDGE_FALLING, ISR_Floor3_Up);
-    Exti_Init(EXTI_LINE_4, EXTI_PORT_A, EXTI_EDGE_FALLING, ISR_Floor3_Down);
-    Exti_Init(EXTI_LINE_5, EXTI_PORT_A, EXTI_EDGE_FALLING, ISR_Floor4_Down);
+    Exti_Init(EXTI_LINE_0, EXTI_PORT_C, EXTI_EDGE_FALLING, ISR_Floor1_Up);
+    Exti_Init(EXTI_LINE_1, EXTI_PORT_C, EXTI_EDGE_FALLING, ISR_Floor2_Up);
+    Exti_Init(EXTI_LINE_2, EXTI_PORT_C, EXTI_EDGE_FALLING, ISR_Floor2_Down);
+    Exti_Init(EXTI_LINE_3, EXTI_PORT_C, EXTI_EDGE_FALLING, ISR_Floor3_Up);
+    Exti_Init(EXTI_LINE_4, EXTI_PORT_C, EXTI_EDGE_FALLING, ISR_Floor3_Down);
+    Exti_Init(EXTI_LINE_5, EXTI_PORT_C, EXTI_EDGE_FALLING, ISR_Floor4_Down);
 
     /*
      * Step 3 – unmask lines in EXTI->IMR and enable in NVIC.

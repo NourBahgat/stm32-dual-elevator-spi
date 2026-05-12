@@ -17,6 +17,7 @@
 #include "Elevator_FSM.h"   /* volatile Ipc_ElevatorState localState */
 #include "Spi.h"
 #include "Utils.h"          /* Enter_Critical, Exit_Critical          */
+#include "board_config.h"   /* IS_MASTER() / IS_SLAVE() role guards   */
 
 volatile uint8  Ipc_CommFault          = 0U;
 volatile uint32 last_spi_rx_timestamp  = 0U;
@@ -27,6 +28,14 @@ static Ipc_ElevatorState ipc_RemoteState;
 static volatile uint8    ipc_TimeoutCounter = 0U;
 
 #define IPC_TIMEOUT_TICKS  5U   /* 5 × 50 ms = 250 ms with no valid frame */
+
+/* Slave-side watchdog: counts 50 ms ticks between received frames.
+ * Only used on ROLE_SLAVE builds — the Master uses ipc_TimeoutCounter
+ * driven by IPC_MasterTick().                                         */
+#if IS_SLAVE()
+static volatile uint8 ipc_SlaveTimeoutCounter = 0U;
+#define IPC_SLAVE_TIMEOUT_TICKS  5U   /* 5 × 50 ms = 250 ms              */
+#endif
 
 /* -------------------------------------------------------------------------
  * IPC_GetRemoteStateSnapshot
@@ -46,6 +55,16 @@ void IPC_GetRemoteStateSnapshot(Ipc_ElevatorState *snapshot)
  * ------------------------------------------------------------------------- */
 void IPC_Init(void)
 {
+    /* Initialise the remote-state buffer to a safe default so the Dispatcher
+     * never reads Floor == 0 (below ELEVATOR_MIN_FLOOR) before the first
+     * valid SPI frame arrives.                                              */
+    ipc_RemoteState.State     = FSM_IDLE;
+    ipc_RemoteState.Floor     = ELEVATOR_MIN_FLOOR;  /* 1U — valid ground floor */
+    ipc_RemoteState.Direction = DIR_NONE;
+    ipc_RemoteState.QueueHi   = 0U;
+    ipc_RemoteState.QueueLo   = 0U;
+    ipc_RemoteState.Flags     = 0U;
+
     Spi1_RegisterCallback(IPC_OnFrameReceived);
 
     /* Slave: pre-arm TX buffer so it is ready before the master's first tick.
@@ -112,34 +131,86 @@ void IPC_UnpackFrame(const uint8 *RxBuf, Ipc_ElevatorState *s)
 /* -------------------------------------------------------------------------
  * IPC_OnFrameReceived   (SPI callback — called from SPI ISR)
  *
+ * MASTER path: store validated frame into ipc_RemoteState for Dispatcher.
+ * SLAVE  path: store validated frame AND process any dispatch command
+ *              encoded in the Flags byte by the Master.
+ *
  * CONCURRENCY:
- *   This runs in ISR context. ipc_RemoteState is updated inside
- *   IPC_UnpackFrame while the NVIC has already disabled re-entrant
- *   SPI interrupts, so no extra critical section is needed here.
- *   The main loop always reads ipc_RemoteState via
- *   IPC_GetRemoteStateSnapshot() which uses Enter/Exit_Critical.
+ *   Runs in ISR context. ipc_RemoteState is updated inside a section
+ *   that the SPI ISR already owns exclusively, so no extra critical
+ *   section is needed here. The main loop always reads ipc_RemoteState
+ *   via IPC_GetRemoteStateSnapshot() which uses Enter/Exit_Critical.
  * ------------------------------------------------------------------------- */
 void IPC_OnFrameReceived(uint8 *RxBuf)
 {
     if (IPC_ValidateFrame(RxBuf) == SPI_OK) {
         IPC_UnpackFrame(RxBuf, &ipc_RemoteState);
-        ipc_TimeoutCounter = 0U;   /* reset watchdog */
+        ipc_TimeoutCounter = 0U;   /* reset master-side watchdog */
         Ipc_CommFault      = 0U;
+
+#if IS_SLAVE()
+        /* Reset slave-side watchdog — valid frame means Master is alive */
+        ipc_SlaveTimeoutCounter = 0U;
+        Ipc_CommFault           = 0U;
+
+        /* Issue 7 fix: process any dispatch command the Master encoded
+         * in the Flags byte before serialising its own state.
+         * The Master writes: Flags = IPC_FLAG_DISPATCH_REQ | encoded_floor.
+         * We clear the flag on the ipc_RemoteState copy (not localState)
+         * so the Master sees it cleared on the next exchange.            */
+        uint8 flags = ipc_RemoteState.Flags;
+        if (flags & IPC_FLAG_DISPATCH_REQ) {
+            uint8 target_floor = IPC_FLAGS_DECODE_FLOOR(flags);
+            Elevator_FSM_RequestFloor(target_floor);
+            /* Acknowledge: clear the request bit so Master stops resending */
+            ipc_RemoteState.Flags &= (uint8)(~IPC_FLAG_DISPATCH_REQ);
+        }
+#endif
     }
-    /* Re-arm slave TX buffer for the next master cycle */
+
+    /* Re-arm slave TX buffer for the next master cycle.
+     * Both roles pre-load their own localState into the TX register so
+     * the Slave's state is ready before the Master pulls CS low.        */
     IPC_PackFrame(ipc_TxBuf, (const Ipc_ElevatorState *)&localState);
     Spi1_StartTransfer(ipc_TxBuf, ipc_RxBuf);
 }
 
 /* -------------------------------------------------------------------------
  * IPC_MasterTick   (Master only — call every 50 ms from timer)
+ * Guarded so it compiles to nothing on Slave builds.
  * ------------------------------------------------------------------------- */
+#if IS_MASTER()
 void IPC_MasterTick(void)
 {
     ipc_TimeoutCounter++;
     if (ipc_TimeoutCounter >= IPC_TIMEOUT_TICKS) {
-        Ipc_CommFault = 1U;   /* Dispatcher will switch to autonomous mode */
+        Ipc_CommFault = 1U;   /* Dispatcher switches to autonomous mode */
     }
     IPC_PackFrame(ipc_TxBuf, (const Ipc_ElevatorState *)&localState);
     Spi1_StartTransfer(ipc_TxBuf, ipc_RxBuf);
 }
+#endif /* IS_MASTER */
+
+/* -------------------------------------------------------------------------
+ * IPC_SlaveTick   (Slave only — call every 50 ms from timer)
+ *
+ * Issue 8 fix: gives the Slave its own comm-fault watchdog.
+ * If no valid SPI frame arrives within IPC_SLAVE_TIMEOUT_TICKS ticks
+ * (250 ms), the Slave sets Ipc_CommFault and enters emergency mode so it
+ * stops waiting for Master commands and operates independently.
+ * ------------------------------------------------------------------------- */
+#if IS_SLAVE()
+void IPC_SlaveTick(void)
+{
+    ipc_SlaveTimeoutCounter++;
+    if (ipc_SlaveTimeoutCounter >= IPC_SLAVE_TIMEOUT_TICKS) {
+        if (Ipc_CommFault == 0U) {
+            /* First detection — latch fault and enter emergency mode */
+            Ipc_CommFault = 1U;
+            Elevator_FSM_SetEmergency();
+        }
+        /* Cap counter so it does not overflow on prolonged fault */
+        ipc_SlaveTimeoutCounter = IPC_SLAVE_TIMEOUT_TICKS;
+    }
+}
+#endif /* IS_SLAVE */
