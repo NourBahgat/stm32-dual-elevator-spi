@@ -139,6 +139,29 @@ void Pwm_SetDutyPercent(uint8 TimerId, uint8 Channel, uint8 DutyPercent) {
 }
 
 /*
+ * Pwm_GetDutyPercent
+ * ------------------
+ * Read back the current duty from the active timer registers.
+ * This keeps telemetry coupled to the hardware state, not to any
+ * application-layer cache.
+ */
+uint8 Pwm_GetDutyPercent(uint8 TimerId, uint8 Channel) {
+    TimerType *timer = (TimerType *)Pwm_BaseAddresses[TimerId - TIMER2];
+    uint32 arr = timer->ARR;
+    uint32 ccr = CCR_REG(timer, Channel);
+
+    if (arr == 0U) {
+        return 0U;
+    }
+
+    if (ccr >= arr) {
+        return 100U;
+    }
+
+    return (uint8)((ccr * 100UL) / arr);
+}
+
+/*
  * Pwm_Start
  * ---------
  * Enables the PWM output and starts the counter.

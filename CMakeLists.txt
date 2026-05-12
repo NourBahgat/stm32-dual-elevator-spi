@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.30)
-include(cmake/ArmToolchain.cmake)
 
 project(auto-cooler C)
 
@@ -12,6 +11,8 @@ set(PROJECT_PATH                         ${CMAKE_CURRENT_SOURCE_DIR})
 include(cmake/Device.cmake)
 include(cmake/SourceList.cmake)
 include(cmake/IncludeList.cmake)
+set(CMAKE_OBJCOPY "arm-none-eabi-objcopy")
+set(CMAKE_SIZE    "arm-none-eabi-size")
 
 set(LINKER_SCRIPTS_BASE_DIR              ${PROJECT_PATH}/STM32-base/linker/)
 set(STARTUP_BASE_DIR                     ${PROJECT_PATH}/STM32-base/startup/)
@@ -44,15 +45,10 @@ target_link_options(${EXECUTABLE} PRIVATE
         #-u _printf_float                # STDIO float formatting support
 )
 
-# Execute post-build to print size
+# Execute post-build to print size and generate HEX/BIN
 add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
         COMMAND ${CMAKE_SIZE} $<TARGET_FILE:${EXECUTABLE}>
-)
-# Convert output to hex and binary
-add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
-        COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:${EXECUTABLE}> ${EXECUTABLE}.hex
-)
-
-add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
+        COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:${EXECUTABLE}> ${EXECUTABLE}.hex
         COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${EXECUTABLE}> ${EXECUTABLE}.bin
+        COMMENT "Generating HEX and BIN files..."
 )

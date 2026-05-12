@@ -252,22 +252,37 @@ void Timer_OcToggleInit(uint8 TimerId, uint8 Channel, uint16 Prescaler, uint16 P
  *   3. Clear CEN  — redundant in OPM but defensive.
  *   4. Invoke the registered callback if one was set.
  */
-static void Timer_HandleIrq(uint8 index) {
+// static void Timer_HandleIrq(uint8 index) {
+//     TimerType *timer = (TimerType *)Timer_BaseAddresses[index];
+
+//     if (READ_BIT(timer->SR, SR_UIF)) {
+//         timer->SR = 0;                       /* Clear the update interrupt flag */
+//         CLEAR_BIT(timer->DIER, DIER_UIE);   /* Disable update interrupt        */
+//         CLEAR_BIT(timer->CR1,  CR1_CEN);    /* Stop the counter                */
+
+//         if (Timer_Callbacks[index] != 0) {
+//             Timer_Callbacks[index]();        /* Call the user-registered function */
+//         }
+//     }
+// }
+static void Timer_HandleIrq(uint8 index)
+{
     TimerType *timer = (TimerType *)Timer_BaseAddresses[index];
 
-    if (READ_BIT(timer->SR, SR_UIF)) {
-        timer->SR = 0;                       /* Clear the update interrupt flag */
-        CLEAR_BIT(timer->DIER, DIER_UIE);   /* Disable update interrupt        */
-        CLEAR_BIT(timer->CR1,  CR1_CEN);    /* Stop the counter                */
+    if (READ_BIT(timer->SR, SR_UIF))
+    {
+        timer->SR = 0;
 
-        if (Timer_Callbacks[index] != 0) {
-            Timer_Callbacks[index]();        /* Call the user-registered function */
+        CLEAR_BIT(timer->DIER, DIER_UIE);
+        CLEAR_BIT(timer->CR1, CR1_CEN);
+
+        if (Timer_Callbacks[index] != 0)
+        {
+            Timer_Callbacks[index]();
         }
     }
 }
-
 /* ISR entry points — names must match the vector table in the startup file */
 void TIM2_IRQHandler(void) { Timer_HandleIrq(0); }
 void TIM3_IRQHandler(void) { Timer_HandleIrq(1); }
 void TIM4_IRQHandler(void) { Timer_HandleIrq(2); }
-void TIM5_IRQHandler(void) { Timer_HandleIrq(3); }

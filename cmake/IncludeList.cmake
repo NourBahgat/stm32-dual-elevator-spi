@@ -13,6 +13,7 @@ set(INCLUDE_LIST ${INCLUDE_LIST}
         ${PROJECT_PATH}/Exti
         ${PROJECT_PATH}/RingBuffer
         ${PROJECT_PATH}/Usart
+        ${PROJECT_PATH}/App
 )
 
 if (USE_HAL)

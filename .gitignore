@@ -1,0 +1,33 @@
+
+---
+
+# 📄 `.gitignore`
+
+```gitignore
+# Build files
+/build/
+/Debug/
+/Release/
+*.o
+*.elf
+*.map
+*.hex
+*.bin
+
+# IDE files
+.vscode/
+*.uvoptx
+*.uvprojx
+*.cproject
+*.project
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+ARCHITECTURE_INTEGRATION.md
+COMPLETION_SUMMARY.md
+EMBEDDED_ARCHITECTURE_DESIGN.md
+QUICK_REFERENCE.md

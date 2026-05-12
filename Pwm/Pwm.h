@@ -45,6 +45,14 @@ void Pwm_Init(uint8 TimerId, uint8 Channel, uint16 Prescaler, uint16 AutoReload)
 void Pwm_SetDutyPercent(uint8 TimerId, uint8 Channel, uint8 DutyPercent);
 
 /*
+ * Pwm_GetDutyPercent
+ * ------------------
+ * Returns the duty value last applied to the hardware channel.
+ * This is a read-only helper for telemetry and diagnostics.
+ */
+uint8 Pwm_GetDutyPercent(uint8 TimerId, uint8 Channel);
+
+/*
  * Pwm_Start
  * ---------
  * Enables the channel output (CCxE in CCER) and starts the counter (CR1_CEN).
