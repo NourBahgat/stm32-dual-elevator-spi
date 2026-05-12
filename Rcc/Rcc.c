@@ -5,8 +5,13 @@
 #include "Std_Types.h"
 
 void Rcc_Init(void) {
+    /* Enable HSI (Internal 16 MHz RC oscillator) */
     SET_BIT(RCC_CR, 0);
-    //	 RCC_CFGR |= (0x0A << 4); // 8MHz internal
+    
+    /* Wait until HSI is ready (HSIRDY bit is set by hardware) */
+    while (READ_BIT(RCC_CR, 1) == 0) {
+        /* Wait for clock stability */
+    }
 }
 
 void Rcc_Enable(uint8 PeripheralId) {

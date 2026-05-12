@@ -1,11 +1,7 @@
-
----
-
-# 📄 `.gitignore`
-
-```gitignore
 # Build files
 /build/
+/build_master/
+/build_slave/
 /Debug/
 /Release/
 *.o
@@ -13,6 +9,7 @@
 *.map
 *.hex
 *.bin
+*.obj
 
 # IDE files
 .vscode/
@@ -27,6 +24,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Documentation (generated or scratch)
 ARCHITECTURE_INTEGRATION.md
 COMPLETION_SUMMARY.md
 EMBEDDED_ARCHITECTURE_DESIGN.md

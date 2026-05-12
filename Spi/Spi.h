@@ -6,18 +6,17 @@
 /* =========================================================================
  * SPI1 Register Map  (STM32F401 Reference Manual, Section 20.5)
  * Base address: 0x40013000
- * All registers are 32-bit; only the lower 16 bits are implemented by hw.
  * ========================================================================= */
 typedef struct {
-    volatile uint32 CR1;        /* 0x00  Control register 1          */
-    volatile uint32 CR2;        /* 0x04  Control register 2          */
-    volatile uint32 SR;         /* 0x08  Status register             */
-    volatile uint32 DR;         /* 0x0C  Data register               */
-    volatile uint32 CRCPR;      /* 0x10  CRC polynomial register     */
-    volatile uint32 RXCRCR;     /* 0x14  RX CRC register             */
-    volatile uint32 TXCRCR;     /* 0x18  TX CRC register             */
-    volatile uint32 I2SCFGR;    /* 0x1C  I2S configuration register  */
-    volatile uint32 I2SPR;      /* 0x20  I2S prescaler register      */
+    volatile uint32 CR1;
+    volatile uint32 CR2;
+    volatile uint32 SR;
+    volatile uint32 DR;
+    volatile uint32 CRCPR;
+    volatile uint32 RXCRCR;
+    volatile uint32 TXCRCR;
+    volatile uint32 I2SCFGR;
+    volatile uint32 I2SPR;
 } SpiType;
 
 #define SPI1_BASE_ADDR   0x40013000UL
@@ -26,51 +25,38 @@ typedef struct {
 /* =========================================================================
  * CR1 Bit Positions
  * ========================================================================= */
-#define SPI_CR1_CPHA_POS     0U   /* Clock phase                        */
-#define SPI_CR1_CPOL_POS     1U   /* Clock polarity                     */
-#define SPI_CR1_MSTR_POS     2U   /* Master selection                   */
-#define SPI_CR1_BR_POS       3U   /* Baud rate control [5:3]            */
-#define SPI_CR1_SPE_POS      6U   /* SPI enable                         */
-#define SPI_CR1_SSI_POS      8U   /* Internal slave select              */
-#define SPI_CR1_SSM_POS      9U   /* Software slave management          */
-#define SPI_CR1_DFF_POS      11U  /* Data frame format (0=8bit,1=16bit) */
+#define SPI_CR1_CPHA_POS     0U
+#define SPI_CR1_CPOL_POS     1U
+#define SPI_CR1_MSTR_POS     2U
+#define SPI_CR1_BR_POS       3U
+#define SPI_CR1_SPE_POS      6U
+#define SPI_CR1_SSI_POS      8U
+#define SPI_CR1_SSM_POS      9U
+#define SPI_CR1_DFF_POS      11U
 
-/* CR1 Masks */
 #define SPI_CR1_BR_MASK      (0x7U << SPI_CR1_BR_POS)
 #define SPI_CR1_DFF_MASK     (0x1U << SPI_CR1_DFF_POS)
 
 /* =========================================================================
  * CR2 Bit Positions
  * ========================================================================= */
-#define SPI_CR2_RXNEIE_POS   6U   /* RX buffer not-empty interrupt enable */
-#define SPI_CR2_TXEIE_POS    7U   /* TX buffer empty interrupt enable     */
+#define SPI_CR2_RXNEIE_POS   6U
+#define SPI_CR2_TXEIE_POS    7U
 
 /* =========================================================================
  * SR Bit Positions
  * ========================================================================= */
-#define SPI_SR_RXNE_POS      0U   /* Receive buffer not empty */
-#define SPI_SR_TXE_POS       1U   /* Transmit buffer empty    */
-#define SPI_SR_BSY_POS       7U   /* Busy flag                */
+#define SPI_SR_RXNE_POS      0U
+#define SPI_SR_TXE_POS       1U
+#define SPI_SR_BSY_POS       7U
 
 /* =========================================================================
  * SPI Frame Definition
  * ========================================================================= */
 #define SPI_FRAME_SIZE       8U
 
-/*
- * Frame Layout (8 bytes):
- *  [0] Header    = 0xA5   (sync / start-of-frame marker)
- *  [1] FSM State          (IDLE / MOVING_UP / MOVING_DOWN / DOORS_OPEN / EMERGENCY)
- *  [2] Floor              (1 - 4)
- *  [3] Direction          (NONE=0 / UP=1 / DOWN=2)
- *  [4] Queue_Hi           (pending floor-request bitmask, high byte)
- *  [5] Queue_Lo           (pending floor-request bitmask, low byte)
- *  [6] Flags              (bit-packed: bit0=door_sensor, bit1=comm_fault_ack)
- *  [7] Checksum           (XOR of bytes 0-6)
- */
 #define SPI_HEADER_BYTE      0xA5U
 
-/* Frame byte indices */
 #define SPI_IDX_HEADER       0U
 #define SPI_IDX_STATE        1U
 #define SPI_IDX_FLOOR        2U
@@ -81,27 +67,35 @@ typedef struct {
 #define SPI_IDX_CHECKSUM     7U
 
 /* =========================================================================
- * Driver Configuration Macros
+ * CS / NSS Pin Configuration
+ *
+ * SPI1 AF5 pin mapping on STM32F401:
+ *   SCK  = PB3
+ *   MISO = PB4
+ *   MOSI = PB5
+ *   NSS  = PA4  ← SPI1_NSS (PB12 = SPI2_NSS, do NOT use for SPI1)
+ *
+ * MASTER: PA4 = GPIO push-pull output (software CS). SSM=1, SSI=1.
+ * SLAVE : PA4 = AF5 hardware NSS input.              SSM=0.
+ *
+ * Proteus wire: Master PA4 → Slave PA4.
  * ========================================================================= */
+#define SPI_CS_PIN           4U   /* PA4 */
 
-/* Master or Slave */
+/* =========================================================================
+ * Driver Configuration
+ * ========================================================================= */
 #define SPI_SLAVE                     0U
 #define SPI_MASTER                    1U
 
-/* Clock Polarity */
 #define SPI_IDLE_LOW                  0U
 #define SPI_IDLE_HIGH                 1U
 
-/* Clock Phase */
-#define SPI_SAMPLE_FIRST_TRANSITION   0U   /* Capture on first  edge */
-#define SPI_SAMPLE_SECOND_TRANSITION  1U   /* Capture on second edge */
+#define SPI_SAMPLE_FIRST_TRANSITION   0U
+#define SPI_SAMPLE_SECOND_TRANSITION  1U
 
-/* Baud rate: BR[2:0] = 001 -> fPCLK/4
- * APB2 on STM32F401 = 84 MHz -> SPI clock = 21 MHz.
- * Increase value to slow down if signal integrity requires it. */
-#define SPI_BR_DIVIDER                0x1U
+#define SPI_BR_DIVIDER                0x1U   /* fPCLK/4 */
 
-/* Return codes */
 #define SPI_OK                        0U
 #define SPI_NOK                       1U
 
@@ -109,15 +103,12 @@ typedef struct {
  * Transfer Status
  * ========================================================================= */
 typedef enum {
-    SPI_STATUS_IDLE = 0U,   /* Transfer finished; RX buffer is valid    */
-    SPI_STATUS_BUSY         /* Transfer in progress; RX buffer is stale */
+    SPI_STATUS_IDLE = 0U,
+    SPI_STATUS_BUSY
 } Spi_StatusType;
 
 /* =========================================================================
- * Callback Type
- * Registered by the IPC Manager.
- * Invoked from ISR context when a complete SPI_FRAME_SIZE frame arrives.
- * Keep the implementation short — no blocking calls inside.
+ * Callback
  * ========================================================================= */
 typedef void (*Spi_FrameCallback)(uint8 *RxBuffer);
 
@@ -126,57 +117,57 @@ typedef void (*Spi_FrameCallback)(uint8 *RxBuffer);
  * ========================================================================= */
 
 /**
- * @brief  Initialise SPI1 peripheral and its GPIO alternate functions.
- *         GPIO: PB3=SCK, PB4=MISO, PB5=MOSI (AF5).
- *         Does NOT enable TX/RX interrupts — call Spi1_StartTransfer() for that.
+ * @brief  Initialise SPI1 peripheral and GPIO.
  *
- * @param  MasterSlave  SPI_MASTER or SPI_SLAVE
- * @param  ClkPol       SPI_IDLE_LOW or SPI_IDLE_HIGH
- * @param  ClkPhase     SPI_SAMPLE_FIRST_TRANSITION or SPI_SAMPLE_SECOND_TRANSITION
+ *         Data pins: PB3=SCK, PB4=MISO, PB5=MOSI (AF5, both roles).
+ *         CS/NSS:    PA4 = GPIO output (master) or AF5 NSS input (slave).
+ *
+ *         Internally records MasterSlave role so Spi1_StartTransfer can
+ *         decide whether to pre-load DR (master only).
  */
 void Spi1_Init(uint8 MasterSlave, uint8 ClkPol, uint8 ClkPhase);
 
 /**
- * @brief  Register a callback invoked from the ISR on full-frame reception.
- *         Call once after Spi1_Init, before the first Spi1_StartTransfer.
- *
- * @param  Callback  Function pointer; pass NULL to disable.
+ * @brief  Register callback invoked from ISR after full frame received.
  */
 void Spi1_RegisterCallback(Spi_FrameCallback Callback);
 
 /**
- * @brief  Arm the interrupt-driven engine for one SPI_FRAME_SIZE exchange.
+ * @brief  Drive PA4 LOW — selects slave.  Master only.
+ *         Must be called BEFORE Spi1_StartTransfer().
+ */
+void Spi1_AssertCS(void);
+
+/**
+ * @brief  Drive PA4 HIGH — releases slave.  Master only.
+ *         Call from inside the OnFrameRx callback.
+ */
+void Spi1_DeassertCS(void);
+
+/**
+ * @brief  Arm interrupt engine for one SPI_FRAME_SIZE full-duplex exchange.
  *
- *         MASTER - call from the 50 ms timer ISR each cycle:
- *             IPC_PackFrame(masterTxBuf);
- *             Spi1_StartTransfer(masterTxBuf, masterRxBuf);
+ *         MASTER: pre-loads byte 0 into DR (SCK starts immediately).
+ *                 AssertCS() must already be LOW before calling this.
  *
- *         SLAVE  - call once after init and again inside the RX callback
- *                  to re-arm for the next master cycle:
- *             IPC_PackFrame(slaveTxBuf);
- *             Spi1_StartTransfer(slaveTxBuf, slaveRxBuf);
+ *         SLAVE:  does NOT pre-load byte 0 — avoids the one-byte frame
+ *                 shift that occurs when DR is written before NSS goes LOW.
+ *                 TXEIE fires instantly on enable and the ISR writes byte 0
+ *                 well before the master clocks the first SCK edge.
  *
- *         TxBuffer and RxBuffer MUST be static or global (not stack variables).
- *         They must remain valid until status returns SPI_STATUS_IDLE.
- *
- * @param  TxBuffer  Pointer to SPI_FRAME_SIZE bytes to transmit.
- * @param  RxBuffer  Pointer to SPI_FRAME_SIZE byte receive buffer.
- * @return SPI_OK    Driver armed successfully.
- *         SPI_NOK   Previous transfer still running; caller should retry.
+ * @param  TxBuffer  Static/global SPI_FRAME_SIZE byte transmit buffer.
+ * @param  RxBuffer  Static/global SPI_FRAME_SIZE byte receive buffer.
+ * @return SPI_OK or SPI_NOK (busy).
  */
 uint8 Spi1_StartTransfer(uint8 *TxBuffer, uint8 *RxBuffer);
 
 /**
- * @brief  Poll the driver state from main-loop / FSM context.
- * @return SPI_STATUS_IDLE  Last frame fully received; RxBuffer is valid.
- *         SPI_STATUS_BUSY  Transfer in progress.
+ * @brief  Poll transfer status.
  */
 Spi_StatusType Spi1_GetStatus(void);
 
 /**
- * @brief  SPI1 global interrupt handler.
- *         Wire to the vector table as SPI1_IRQHandler (startup_stm32f401xe.s).
- *         Handles TXEIE and RXNEIE flags in one ISR entry.
+ * @brief  SPI1 interrupt handler — wire to vector table as SPI1_IRQHandler.
  */
 void SPI1_IRQHandler(void);
 

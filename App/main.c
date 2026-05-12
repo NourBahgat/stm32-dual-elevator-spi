@@ -1,3 +1,9 @@
+/* When building driver tests define -DDRIVER_TEST_MASTER or
+ * -DDRIVER_TEST_SLAVE on the compiler command-line.  Either flag
+ * suppresses every symbol in this file so the linker sees only one
+ * main() — the one in Test/master_test.c or Test/slave_test.c. */
+#if !defined(DRIVER_TEST_MASTER) && !defined(DRIVER_TEST_SLAVE)
+
 /**
  * main.c
  *
@@ -144,3 +150,5 @@ void Application_BackgroundTick(void) {
   HallCallButtons_Process();
   Telemetry_Tick();
 }
+
+#endif /* !DRIVER_TEST_MASTER && !DRIVER_TEST_SLAVE */

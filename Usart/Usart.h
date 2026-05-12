@@ -59,17 +59,14 @@ typedef struct {
 
 /* =========================================================================
  * BRR value for target baud rates
- * Formula:  BRR = fCLK / (8 * (2 - OVER8) * BaudRate)
- * USART1 is on APB2 = 84 MHz, OVER8 = 0 (16x oversampling)
+ * Formula:  BRR = fCLK / (16 * BaudRate)
+ * USART1 is on APB2 = 16 MHz (HSI default)
  *
- *  9600   baud → BRR = 84000000 / (16 * 9600)  = 546.875  → 0x0223
- *  115200 baud → BRR = 84000000 / (16 * 115200) = 45.572  → mantissa=45, frac=9 → 0x02D9
- *
- * Use USART_BRR_115200 for the telemetry port — faster transfer means
- * less time spent in the TX retry loop.
+ *  9600   baud → BRR = 16,000,000 / (16 * 9600)   = 104.16 → 0x683
+ *  115200 baud → BRR = 16,000,000 / (16 * 115,200) = 8.68   → 0x8B
  * ========================================================================= */
-#define USART_BRR_9600       0x0222U   /* ~9600   baud @ 84 MHz APB2 */
-#define USART_BRR_115200     0x02D9U   /* ~115200 baud @ 84 MHz APB2 */
+#define USART_BRR_9600       0x0683U   /* 9600   baud @ 16 MHz */
+#define USART_BRR_115200     0x008BU   /* 115200 baud @ 16 MHz */
 
 /* =========================================================================
  * Ring buffer size — must be a power of 2
