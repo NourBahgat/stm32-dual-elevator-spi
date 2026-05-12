@@ -33,6 +33,7 @@
 #include "Timer.h"
 #include "Telemetry.h"
 #include "pwm_scheduler.h"
+#include "board_config.h"   /* IS_MASTER() / IS_SLAVE() */
 
 /* ========================================================================
  * Global Motor Control Instances
@@ -66,11 +67,13 @@ int main(void) {
   /* IPC (inter-processor communication via SPI) */
   IPC_Init();
 
-  /* Dispatcher (elevator assignment algorithm) */
+#if IS_MASTER()
+  /* Dispatcher and hall-call buttons are Master-only.
+   * The Slave receives dispatch commands via the IPC Flags byte
+   * and processes them inside IPC_OnFrameReceived().              */
   Dispatcher_Init();
-
-  /* Hall call buttons (EXTI interrupts) */
   HallCallButtons_Init();
+#endif
 
   /* Telemetry system */
   Telemetry_Init();
@@ -98,9 +101,10 @@ void Application_10ms_Tick(void) {
 }
 
 /**
- * 100 ms hook: comms health check stays in main-loop context.
+ * 100 ms hook: comm-fault detection is handled by IPC_MasterTick() (50 ms
+ * timer ISR) + IPC_OnFrameReceived() (SPI ISR).  No dispatcher call needed.
  */
-void Application_100ms_Tick(void) { Dispatcher_CheckCommFault(system_time_ms); }
+void Application_100ms_Tick(void) { /* reserved for future 100 ms tasks */ }
 
 /**
  * 500 ms hook: run application decisions first, then queue telemetry.
@@ -117,7 +121,13 @@ void Application_500ms_Tick(void) {
 
   /* Tick the local FSM and the global Dispatcher */
   Elevator_FSM_Tick();
+#if IS_MASTER()
   Dispatcher_Tick();
+  IPC_MasterTick();
+#endif
+#if IS_SLAVE()
+  IPC_SlaveTick();
+#endif
 
   /* Update the local motor PWM based on the new FSM state */
   PwmScheduler_UpdateState(&motor_a, (ElevatorState_t)local_snapshot.State);
@@ -147,7 +157,9 @@ void Application_500ms_Tick(void) {
  * Background hook: keeps low-priority consumers running without blocking.
  */
 void Application_BackgroundTick(void) {
+#if IS_MASTER()
   HallCallButtons_Process();
+#endif
   Telemetry_Tick();
 }
 
