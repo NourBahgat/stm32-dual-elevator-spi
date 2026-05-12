@@ -3,25 +3,22 @@
 /* =========================
  * STATE → SPEED MAPPING
  * ========================= */
-static uint8 StateToDuty(ElevatorState_t state)
-{
-    switch (state)
+    static const uint8 state_duty_map[] =
     {
-        case ELEV_MOVING_UP:
-        case ELEV_MOVING_DOWN:
-            return 100;  /* full speed travel */
+        [ELEV_IDLE]        = 0,
+        [ELEV_DOORS_OPEN]  = 20,
+        [ELEV_MOVING_UP]   = 100,
+        [ELEV_MOVING_DOWN] = 100,
+        [ELEV_EMERGENCY]   = 0
+    };
 
-        case ELEV_IDLE:
-        case ELEV_DOORS_OPEN:
+    static uint8 StateToDuty(ElevatorState_t state)
+    {
+        if (state >= (sizeof(state_duty_map) / sizeof(state_duty_map[0])))
             return 0;
 
-        case ELEV_EMERGENCY:
-            return 0;
-
-        default:
-            return 0;
+        return state_duty_map[state];
     }
-}
 
 /* =========================
  * INIT
@@ -39,10 +36,9 @@ void PwmScheduler_Init(PwmContext_t *ctx, uint8 TimerId, uint8 Channel)
 
     Pwm_SetDutyPercent(TimerId, Channel, 0);
 }
-
-/* =========================
+/* =========================================================
  * FSM → PWM UPDATE
- * ========================= */
+ * ========================================================= */
 void PwmScheduler_UpdateState(PwmContext_t *ctx, ElevatorState_t state)
 {
     ctx->state = state;
@@ -59,41 +55,59 @@ void PwmScheduler_UpdateState(PwmContext_t *ctx, ElevatorState_t state)
     ctx->emergency_flag = 0;
     ctx->target_duty = StateToDuty(state);
 
+    /* Start ramp only if needed */
     if (ctx->target_duty != ctx->current_duty)
         ctx->ramp_active = 1;
+    else
+        ctx->ramp_active = 0;
 }
 
-/* =========================
- * RAMP ENGINE (NO BLOCKING)
- * Called from the main loop on the 10ms scheduling flag.
- * ========================= */
+/* =========================================================
+ * RAMP ENGINE (NON-BLOCKING)
+ * Called every 10ms from scheduler
+ * ========================================================= */
 void PwmScheduler_Tick(PwmContext_t *ctx)
 {
-    /* Emergency = hard stop */
+    /* Emergency handling */
     if (ctx->emergency_flag)
     {
         ctx->current_duty = 0;
+        ctx->target_duty = 0;
+        ctx->ramp_active = 0;
+
         Pwm_SetDutyPercent(ctx->TimerId, ctx->Channel, 0);
         return;
     }
 
+    /* Nothing to do */
     if (!ctx->ramp_active)
         return;
 
-    /* Smooth ramp */
-    if (ctx->current_duty < ctx->target_duty)
+    /* Calculate difference */
+    uint16 diff = (uint16)ctx->target_duty - (uint16)ctx->current_duty;
+
+    /* Already reached target */
+    if (diff == 0)
     {
-        ctx->current_duty += 2;  /* step up */
+        ctx->ramp_active = 0;
+        return;
+    }
+
+    /* Step size */
+    if (diff > 0)
+    {
+        ctx->current_duty += 20;
+
         if (ctx->current_duty >= ctx->target_duty)
         {
             ctx->current_duty = ctx->target_duty;
             ctx->ramp_active = 0;
         }
     }
-    else if (ctx->current_duty > ctx->target_duty)
+    else
     {
-        if (ctx->current_duty >= 2)
-            ctx->current_duty -= 2;
+        if (ctx->current_duty >= 20)
+            ctx->current_duty -= 20;
         else
             ctx->current_duty = 0;
 
@@ -103,6 +117,10 @@ void PwmScheduler_Tick(PwmContext_t *ctx)
             ctx->ramp_active = 0;
         }
     }
+
+    /* Safety clamp (extra protection) */
+    if (ctx->current_duty > 100)
+        ctx->current_duty = 100;
 
     Pwm_SetDutyPercent(ctx->TimerId, ctx->Channel, ctx->current_duty);
 }

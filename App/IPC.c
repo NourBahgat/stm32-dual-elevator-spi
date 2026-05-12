@@ -13,7 +13,7 @@
  *     where the cast is safe (the ISR cannot be interrupted by itself).
  */
 
-#include "Ipc.h"
+#include "IPC.h"
 #include "Elevator_FSM.h"   /* volatile Ipc_ElevatorState localState */
 #include "Spi.h"
 #include "Utils.h"          /* Enter_Critical, Exit_Critical          */

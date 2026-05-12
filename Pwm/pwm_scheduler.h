@@ -1,9 +1,9 @@
 #ifndef PWM_SCHEDULER_H
 #define PWM_SCHEDULER_H
 
-#include <stdint.h>
 #include "Pwm.h"
 #include "Elevator_FSM.h"
+#include "Std_Types.h"
 
 /* Elevator states (from FSM) */
 typedef enum {

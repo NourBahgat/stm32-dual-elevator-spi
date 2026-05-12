@@ -1,7 +1,7 @@
 #ifndef ELEVATOR_FSM_H
 #define ELEVATOR_FSM_H
 
-#include "Ipc.h"
+#include "IPC.h"
 #include "Std_Types.h"
 
 
