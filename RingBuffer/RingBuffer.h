@@ -1,11 +1,4 @@
-﻿/**
- * RingBuffer.h
- *
- * Created on: 2026-04-25
- * Author    : AbdallahDarwish
- */
-
-#ifndef RINGBUFFER_H
+﻿#ifndef RINGBUFFER_H
 #define RINGBUFFER_H
 
 #include "../Lib/Std_Types.h"

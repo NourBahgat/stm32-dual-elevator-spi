@@ -3,11 +3,6 @@
 #include "Nvic.h"
 #include "RingBuffer.h"
 
-/*
- * No stm32f401xe.h included — UsartType and USART1 are defined entirely
- * in Usart.h using a manual register map, consistent with the project's
- * driver architecture.
- */
 
 /* =========================================================================
  * Module-private RX ring buffer

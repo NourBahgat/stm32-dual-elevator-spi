@@ -1,10 +1,4 @@
-﻿/**
- * RingBuffer.cpp
- *
- * Created on: 2026-04-25
- * Author    : AbdallahDarwish
- */
-#include "RingBuffer.h"
+﻿#include "RingBuffer.h"
 
 void RB_Init(RingBufferType* rb)
 {
