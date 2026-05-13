@@ -1,4 +1,5 @@
 #include "pwm_scheduler.h"
+#include "Usart.h"  /* for debug output */
 
 /* =========================
  * STATE → SPEED MAPPING
@@ -126,4 +127,12 @@ void PwmScheduler_Tick(PwmContext_t *ctx)
         ctx->current_duty = 100U;
 
     Pwm_SetDutyPercent(ctx->TimerId, ctx->Channel, ctx->current_duty);
+    
+    /* DEBUG: Print duty cycle when ramping */
+    if (ctx->ramp_active) {
+        Usart1_TransmitString("[PWM] Duty: ");
+        Usart1_TransmitByte((uint8)('0' + (ctx->current_duty / 10)));
+        Usart1_TransmitByte((uint8)('0' + (ctx->current_duty % 10)));
+        Usart1_TransmitString("%\r\n");
+    }
 }
