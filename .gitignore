@@ -30,3 +30,7 @@ ARCHITECTURE_INTEGRATION.md
 COMPLETION_SUMMARY.md
 EMBEDDED_ARCHITECTURE_DESIGN.md
 QUICK_REFERENCE.md
+build-master/.ninja_deps
+build-master/.ninja_log
+build-slave/.ninja_deps
+build-slave/.ninja_log
