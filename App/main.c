@@ -120,6 +120,8 @@ void Application_50ms_Tick(void)
 #if IS_MASTER()
     Dispatcher_Tick();
     IPC_MasterTick();
+#else
+    IPC_SlaveTick();
 #endif
 }
 
@@ -128,7 +130,19 @@ void Application_50ms_Tick(void)
  * ========================================================= */
 void Application_100ms_Tick(void)
 {
-    /* reserved */
+#if IS_SLAVE()
+    /* Project Requirement: If communication is lost, enter Emergency mode.
+     * Ipc_CommFault is set by IPC_SlaveTick after repeated bad frames or timeouts. */
+    if (Ipc_CommFault) {
+        Elevator_FSM_SetEmergency();
+        /* Visual feedback on terminal */
+        static uint8 fault_logged = 0;
+        if (!fault_logged) {
+            Usart1_TransmitString("[System] COMM FAULT detected! Slave entering emergency mode.\r\n");
+            fault_logged = 1;
+        }
+    }
+#endif
 }
 
 /* =========================================================

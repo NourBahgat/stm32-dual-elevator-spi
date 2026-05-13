@@ -29,7 +29,11 @@
 #include "Exti.h"      /* Exti_Init(), Exti_Enable()    */
 #include "Gpio.h"      /* Gpio_Init()                   */
 #include "Nvic.h"      /* Nvic_SetPriority()            */
+#include "Usart.h"     /* Usart1_TransmitString         */
 #include "Utils.h"     /* Enter_Critical, Exit_Critical */
+
+/* System millisecond counter from System.c (incremented by SysTick every 1ms) */
+extern volatile uint32 system_time_ms;
 
 /* ══════════════════════════════════════════════════════════════════════════
  * SHARED STATE  —  marked volatile because ISRs write Floor, QueueLo,
@@ -52,8 +56,18 @@ volatile Ipc_ElevatorState localState = {
  * Counted in Elevator_FSM_Tick() calls (each tick = 10 ms).
  * Doors stay open for DOOR_OPEN_TICKS ticks = 2 seconds.
  * ══════════════════════════════════════════════════════════════════════════ */
-#define DOOR_OPEN_TICKS  200U        /* 200 × 10 ms = 2 s                  */
-static uint8 door_open_counter = 0U;
+#define DOOR_OPEN_MS  50U
+static volatile uint32 door_open_start_ms = 0U;
+
+/* For terminal debugging */
+static uint8 last_logged_state = 0xFFU;
+static const char* state_names[] = {
+    "IDLE", 
+    "MOVING_UP", 
+    "MOVING_DOWN", 
+    "DOORS_OPEN", 
+    "EMERGENCY"
+};
 
 /* ══════════════════════════════════════════════════════════════════════════
  * PRIVATE HELPERS — floor request queue
@@ -153,10 +167,10 @@ static void ISR_Cabin_F4(void) { Elevator_FSM_RequestFloor(4U); }
 
 /* ── Floor sensors (PB10–PB13): update position when car arrives ────────── */
 /* These update a single uint8 field — atomic on Cortex-M4, no lock needed */
-static void ISR_Sensor_F1(void) { localState.Floor = 1U; }
-static void ISR_Sensor_F2(void) { localState.Floor = 2U; }
-static void ISR_Sensor_F3(void) { localState.Floor = 3U; }
-static void ISR_Sensor_F4(void) { localState.Floor = 4U; }
+static void ISR_Sensor_F1(void) { localState.Floor = 1U; Usart1_TransmitString("[Sensor] Arrived Floor 1\r\n"); }
+static void ISR_Sensor_F2(void) { localState.Floor = 2U; Usart1_TransmitString("[Sensor] Arrived Floor 2\r\n"); }
+static void ISR_Sensor_F3(void) { localState.Floor = 3U; Usart1_TransmitString("[Sensor] Arrived Floor 3\r\n"); }
+static void ISR_Sensor_F4(void) { localState.Floor = 4U; Usart1_TransmitString("[Sensor] Arrived Floor 4\r\n"); }
 
 /* ── Emergency Stop (PA15) — NVIC priority 0 (highest) ─────────────────── */
 /*
@@ -203,7 +217,7 @@ void Elevator_FSM_Init(uint8 startFloor)
     localState.QueueHi   = 0U;
     localState.QueueLo   = 0U;
     localState.Flags     = 0U;
-    door_open_counter    = 0U;
+    door_open_start_ms   = 0U;
     Exit_Critical();
 
     /* ── GPIO: Cabin Buttons on PB6–PB9 (input, internal pull-up) ────── */
@@ -282,6 +296,14 @@ void Elevator_FSM_Init(uint8 startFloor)
  */
 void Elevator_FSM_Tick(void)
 {
+    /* Log state transitions for terminal debugging */
+    if (localState.State != last_logged_state) {
+        Usart1_TransmitString("[FSM] State: ");
+        Usart1_TransmitString(state_names[localState.State]);
+        Usart1_TransmitString("\r\n");
+        last_logged_state = localState.State;
+    }
+
     /* EMERGENCY is a terminal state — only a system reset clears it */
     if (localState.State == FSM_EMERGENCY) {
         return;
@@ -306,7 +328,7 @@ void Elevator_FSM_Tick(void)
             Queue_Clear(localState.Floor);
             localState.State     = FSM_DOORS_OPEN;
             localState.Direction = DIR_NONE;
-            door_open_counter    = 0U;
+            door_open_start_ms   = system_time_ms;   /* start 2-second timer */
             Exit_Critical();
         } else {
             /* Request is on another floor: start moving */
@@ -328,7 +350,7 @@ void Elevator_FSM_Tick(void)
             Queue_Clear(localState.Floor);
             localState.State     = FSM_DOORS_OPEN;
             localState.Direction = DIR_NONE;
-            door_open_counter    = 0U;
+            door_open_start_ms   = system_time_ms;   /* start 2-second timer */
             Exit_Critical();
             break;
         }
@@ -354,12 +376,13 @@ void Elevator_FSM_Tick(void)
 
     /* ── DOORS_OPEN: hold for 2 seconds then transition to IDLE ─────── */
     case FSM_DOORS_OPEN:
-        door_open_counter++;
-        if (door_open_counter >= DOOR_OPEN_TICKS) {
+        /* Use absolute timestamp — immune to tick-rate variation in Proteus */
+        if ((system_time_ms - door_open_start_ms) >= DOOR_OPEN_MS) {
+            Usart1_TransmitString("[FSM] Doors closed -> IDLE\r\n");
             Enter_Critical();
             localState.State     = FSM_IDLE;
             localState.Direction = DIR_NONE;
-            door_open_counter    = 0U;
+            door_open_start_ms   = 0U;
             Exit_Critical();
         }
         break;

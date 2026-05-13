@@ -134,9 +134,8 @@ void IPC_OnFrameReceived(uint8 *RxBuf)
          * can drop any pending dispatch request it had encoded in its last
          * TX frame. This prevents the same hall-call from being re-sent on
          * subsequent 50 ms IPC_MasterTick() cycles. */
-        prv_LogFrame("MASTER RX (slave state)", RxBuf);
         if (localState.Flags & IPC_FLAG_DISPATCH_REQ) {
-            Usart1_TransmitString("[IPC] MASTER: ACK dispatch, clearing DISPATCH_REQ flag\r\n");
+            Usart1_TransmitString("[IPC] MASTER: ACK dispatch\r\n");
             Enter_Critical();
             localState.Flags &= (uint8)(~IPC_FLAG_DISPATCH_REQ);
             Exit_Critical();
@@ -146,7 +145,6 @@ void IPC_OnFrameReceived(uint8 *RxBuf)
 
 #if IS_SLAVE()
     ipc_SlaveTimeoutCounter = 0U;
-    prv_LogFrame("SLAVE  RX (master cmd) ", RxBuf);
     if (ipc_RemoteState.Flags & IPC_FLAG_DISPATCH_REQ) {
         uint8 target_floor = IPC_FLAGS_DECODE_FLOOR(ipc_RemoteState.Flags);
         Usart1_TransmitString("[IPC] SLAVE: DISPATCH -> Floor ");
@@ -154,8 +152,6 @@ void IPC_OnFrameReceived(uint8 *RxBuf)
         Usart1_TransmitString(fStr);
         Usart1_TransmitString("\r\n");
         Elevator_FSM_RequestFloor(target_floor);
-    } else {
-        Usart1_TransmitString("[IPC] SLAVE: frame OK, no dispatch\r\n");
     }
 #endif
   }
@@ -164,9 +160,15 @@ void IPC_OnFrameReceived(uint8 *RxBuf)
     const char *who = IS_MASTER() ? "MASTER" : "SLAVE ";
     Usart1_TransmitString("[IPC] ");
     Usart1_TransmitString(who);
-    Usart1_TransmitString(": BAD FRAME! ");
-    prv_LogFrame("", RxBuf);
-    if (IS_MASTER()) Spi1_DeassertCS();
+    Usart1_TransmitString(": BAD FRAME! (Resyncing...)\r\n");
+    
+    /* Hardware Resync: Reset SPI peripheral to clear internal shift registers */
+#if IS_MASTER()
+    Spi1_DeassertCS();
+    Spi1_Init(SPI_MASTER, SPI_IDLE_LOW, SPI_SAMPLE_FIRST_TRANSITION);
+#else
+    Spi1_Init(SPI_SLAVE, SPI_IDLE_LOW, SPI_SAMPLE_FIRST_TRANSITION);
+#endif
   }
 
 #if IS_SLAVE()
@@ -185,16 +187,13 @@ void IPC_MasterTick(void)
 
   if (Spi1_GetStatus() == SPI_STATUS_IDLE) {
     IPC_PackFrame(ipc_TxBuf, (const Ipc_ElevatorState *)&localState);
-    /* Log TX frame; annotate when a dispatch command is embedded */
-    if (localState.Flags & IPC_FLAG_DISPATCH_REQ) {
-        uint8 f = IPC_FLAGS_DECODE_FLOOR(localState.Flags);
-        Usart1_TransmitString("[IPC] MASTER TX: DISPATCH -> Floor ");
-        char fStr[2] = { (char)('0' + f), '\0' };
-        Usart1_TransmitString(fStr);
-        Usart1_TransmitString(" | ");
-    }
-    prv_LogFrame("MASTER TX", ipc_TxBuf);
     Spi1_AssertCS();
+    
+    /* Small synchronization delay (approx 10-20us) to ensure the 
+     * Slave's interrupt logic has processed the CS falling edge 
+     * before we start the clock. Essential for simulation stability. */
+    for (volatile uint32 i = 0; i < 100; i++); 
+
     Spi1_StartTransfer(ipc_TxBuf, ipc_RxBuf);
   }
 }

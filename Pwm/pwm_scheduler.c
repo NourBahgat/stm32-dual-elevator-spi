@@ -83,8 +83,10 @@ void PwmScheduler_Tick(PwmContext_t *ctx)
     if (!ctx->ramp_active)
         return;
 
-    /* Calculate difference */
-    uint16 diff = (uint16)ctx->target_duty - (uint16)ctx->current_duty;
+    /* Calculate difference — MUST be signed to detect ramp-down correctly.
+     * If unsigned: target=0, current=20 → diff = 0xFFEC (underflow!) → ramp
+     * engine falsely thinks it needs to go UP and the LED never turns off. */
+    sint16 diff = (sint16)ctx->target_duty - (sint16)ctx->current_duty;
 
     /* Already reached target */
     if (diff == 0)
@@ -93,10 +95,10 @@ void PwmScheduler_Tick(PwmContext_t *ctx)
         return;
     }
 
-    /* Step size */
+    /* Step size: ramp UP */
     if (diff > 0)
     {
-        ctx->current_duty += 20;
+        ctx->current_duty += 20U;
 
         if (ctx->current_duty >= ctx->target_duty)
         {
@@ -104,12 +106,13 @@ void PwmScheduler_Tick(PwmContext_t *ctx)
             ctx->ramp_active = 0;
         }
     }
+    /* Step size: ramp DOWN */
     else
     {
-        if (ctx->current_duty >= 20)
-            ctx->current_duty -= 20;
+        if (ctx->current_duty > 20U)
+            ctx->current_duty -= 20U;
         else
-            ctx->current_duty = 0;
+            ctx->current_duty = 0U;
 
         if (ctx->current_duty <= ctx->target_duty)
         {
@@ -118,9 +121,9 @@ void PwmScheduler_Tick(PwmContext_t *ctx)
         }
     }
 
-    /* Safety clamp (extra protection) */
-    if (ctx->current_duty > 100)
-        ctx->current_duty = 100;
+    /* Safety clamp */
+    if (ctx->current_duty > 100U)
+        ctx->current_duty = 100U;
 
     Pwm_SetDutyPercent(ctx->TimerId, ctx->Channel, ctx->current_duty);
 }
