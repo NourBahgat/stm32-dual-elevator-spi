@@ -196,9 +196,9 @@ void Elevator_FSM_Init(uint8 startFloor)
     Gpio_Init(GPIO_B, 8U,  GPIO_INPUT, GPIO_PULL_UP);
     Gpio_Init(GPIO_B, 9U,  GPIO_INPUT, GPIO_PULL_UP);
 
-    /* ── GPIO: Floor Sensors on PB10–PB13 (input, internal pull-up) ──── */
+    /* ── GPIO: Floor Sensors (PB10, PB14, PB12, PB13) ─────────────────── */
     Gpio_Init(GPIO_B, 10U, GPIO_INPUT, GPIO_PULL_UP);
-    Gpio_Init(GPIO_B, 11U, GPIO_INPUT, GPIO_PULL_UP);
+    Gpio_Init(GPIO_B, 14U, GPIO_INPUT, GPIO_PULL_UP); /* Moved from PB11 */
     Gpio_Init(GPIO_B, 12U, GPIO_INPUT, GPIO_PULL_UP);
     Gpio_Init(GPIO_B, 13U, GPIO_INPUT, GPIO_PULL_UP);
 
@@ -213,7 +213,7 @@ void Elevator_FSM_Init(uint8 startFloor)
 
     /* ── EXTI: Floor Sensors — falling edge (sensor triggers = low) ───── */
     Exti_Init(EXTI_LINE_10, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_Sensor_F1);
-    Exti_Init(EXTI_LINE_11, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_Sensor_F2);
+    Exti_Init(EXTI_LINE_14, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_Sensor_F2); /* PB14 */
     Exti_Init(EXTI_LINE_12, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_Sensor_F3);
     Exti_Init(EXTI_LINE_13, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_Sensor_F4);
 
@@ -226,7 +226,7 @@ void Elevator_FSM_Init(uint8 startFloor)
     Exti_Enable(EXTI_LINE_8);   /* Cabin F3 */
     Exti_Enable(EXTI_LINE_9);   /* Cabin F4 */
     Exti_Enable(EXTI_LINE_10);  /* Sensor F1 */
-    Exti_Enable(EXTI_LINE_11);  /* Sensor F2 */
+    Exti_Enable(EXTI_LINE_14);  /* Sensor F2 (PB14) */
     Exti_Enable(EXTI_LINE_12);  /* Sensor F3 */
     Exti_Enable(EXTI_LINE_13);  /* Sensor F4 */
     Exti_Enable(EXTI_LINE_15);  /* Emergency Stop */
