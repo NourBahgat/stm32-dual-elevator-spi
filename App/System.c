@@ -177,6 +177,7 @@ void System_Init(void) {
      *   PSC = 15999 → f_cnt = 16 MHz / 16000 = 1 kHz
      *   ARR = 499   → overflow every 500 ticks = 500 ms */
     Timer_Init(TIMER5, 15999U, 499U);
+    SET_BIT(TIM5->DIER, DIER_UIE); /* Enable update interrupt for the 500ms scheduler */
 
     /* PWM on TIM2 for motor LED simulation (10 kHz)
      *   PSC = 15  → f_cnt = 16 MHz / 16 = 1 MHz

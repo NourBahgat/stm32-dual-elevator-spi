@@ -471,3 +471,30 @@ Ipc_ElevatorState Elevator_FSM_GetSnapshot(void)
 
     return copy;
 }
+
+void Elevator_FSM_PrintQueue(const Ipc_ElevatorState *state, const char *label)
+{
+    if (state == (void *)0 || label == (void *)0) return;
+
+    Usart1_TransmitString(label);
+    Usart1_TransmitString(" Queue: [");
+
+    uint8 first = 1;
+    for (uint8 f = 1; f <= 4; f++) {
+        uint8 has = 0;
+        if (f <= 2) {
+            has = (state->QueueLo & (uint8)(1U << (f - 1U))) != 0U;
+        } else {
+            has = (state->QueueHi & (uint8)(1U << (f - 3U))) != 0U;
+        }
+
+        if (has) {
+            if (!first) Usart1_TransmitString(", ");
+            char fChar = (char)('0' + f);
+            char s[2] = { fChar, '\0' };
+            Usart1_TransmitString(s);
+            first = 0;
+        }
+    }
+    Usart1_TransmitString("]\r\n");
+}

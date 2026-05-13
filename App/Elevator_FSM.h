@@ -32,5 +32,6 @@ void Elevator_FSM_Tick(void);
 void Elevator_FSM_RequestFloor(uint8 floor);
 void Elevator_FSM_SetEmergency(void);
 Ipc_ElevatorState Elevator_FSM_GetSnapshot(void);
+void Elevator_FSM_PrintQueue(const Ipc_ElevatorState *state, const char *label);
 
 #endif /* ELEVATOR_FSM_H */
