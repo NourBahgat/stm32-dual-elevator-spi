@@ -66,7 +66,8 @@ static const char* state_names[] = {
     "MOVING_UP", 
     "MOVING_DOWN", 
     "DOORS_OPEN", 
-    "EMERGENCY"
+    "EMERGENCY",
+    "DOORS_CLOSING"
 };
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -380,13 +381,22 @@ void Elevator_FSM_Tick(void)
         if ((system_time_ms - door_open_start_ms) >= DOOR_OPEN_MS) {
             Usart1_TransmitString("[FSM] Doors closed -> IDLE\r\n");
             Enter_Critical();
-            localState.State     = FSM_IDLE;
+            localState.State     = FSM_DOORS_CLOSING;  // NEW intermediate state
             localState.Direction = DIR_NONE;
-            door_open_start_ms   = 0U;
+            door_open_start_ms   = system_time_ms;     // reuse timer for close delay
             Exit_Critical();
         }
         break;
-
+        case FSM_DOORS_CLOSING:
+        // Hold at 0% duty for at least one full PWM ramp-down cycle (50 ms)
+            if ((system_time_ms - door_open_start_ms) >= 60U) {
+                Usart1_TransmitString("[FSM] Doors closed -> IDLE\r\n");
+                Enter_Critical();
+                localState.State     = FSM_IDLE;
+                localState.Direction = DIR_NONE;
+                Exit_Critical();
+            }
+            break;
     default:
         Enter_Critical();
         localState.State = FSM_IDLE;

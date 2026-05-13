@@ -15,6 +15,8 @@
 #define FSM_MOVING_DOWN  2U
 #define FSM_DOORS_OPEN   3U
 #define FSM_EMERGENCY    4U
+#define FSM_DOORS_CLOSING 5U   // transient state: motor stopped, waiting 1 tick
+
 
 /* ── Direction values  (stored in Ipc_ElevatorState.Direction as uint8) */
 #define DIR_NONE 0U

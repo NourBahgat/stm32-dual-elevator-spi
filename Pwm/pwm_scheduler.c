@@ -9,7 +9,8 @@
         [ELEV_DOORS_OPEN]  = 20,
         [ELEV_MOVING_UP]   = 100,
         [ELEV_MOVING_DOWN] = 100,
-        [ELEV_EMERGENCY]   = 0
+        [ELEV_EMERGENCY]   = 0,
+        [ELEV_DOORS_CLOSING] = 0
     };
 
     static uint8 StateToDuty(ElevatorState_t state)
