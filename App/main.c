@@ -130,14 +130,14 @@ void Application_500ms_Tick(void)
 
     Ipc_ElevatorState local_snapshot = fsm_snapshot;
 
-    Telemetry_BuildFrame(&tx_next,
+    Telemetry_BuildFrame(tx_next,
                         local_snapshot.State,
                         local_snapshot.Floor,
                         local_snapshot.MotorDuty,
                         local_snapshot.Flags);
 
     dma_busy = 1;
-    Telemetry_SendDMA(&tx_next);
+    Telemetry_SendDMA(tx_next);
 }
 /* =========================================================
  * DMA complete callback
@@ -160,5 +160,7 @@ void Application_BackgroundTick(void)
 #if IS_MASTER()
     HallCallButtons_Process();
 #endif
-    Telemetry_Tick();
 }
+
+#endif /* not DRIVER_TEST_* */
+

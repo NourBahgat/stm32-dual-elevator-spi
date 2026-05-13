@@ -27,6 +27,7 @@
 #include "Timer_Private.h"   /* TimerType, TIM5_BASE_ADDR, SR_UIF */
 #include "Usart.h"
 #include "Utils.h"           /* REG32, Enter_Critical, Exit_Critical */
+#include "../Dma/Dma.h"
 
 /* TIM5 register access via base address */
 #define TIM5  ((TimerType *)TIM5_BASE_ADDR)
@@ -159,6 +160,9 @@ void System_Init(void) {
 
     /* UART for telemetry (sets up PA9/PA10 as TX/RX AF7, enables RXNEIE) */
     Usart1_Init();
+
+    /* DMA subsystem for USART1 TX (register-level) */
+    Dma_Init();
 
     /* TIM5: 500 ms period
      *   PSC = 15999 → f_cnt = 16 MHz / 16000 = 1 kHz
