@@ -136,9 +136,8 @@ uint8 Spi1_StartTransfer(uint8 *TxBuffer, uint8 *RxBuffer) {
     spi_Status = SPI_STATUS_BUSY;
 
     /* Pre-load byte 0 into the hardware shift register.
-     * MASTER: pre-loads immediately to clock data out on SCK rising edge.
-     * SLAVE:  does NOT pre-load to avoid one-byte frame shift; 
-     *         waits for Master's clock to synchronize first byte TX/RX. */
+     * Essential for the 'Slave Challenge': the first byte must be in the 
+     * shift register before the Master's first clock edge arrives. */
     if (SPI1->SR & (1U << SPI_SR_TXE_POS)) {
         SPI1->DR  = (uint32)spi_TxBuf[0];
         spi_TxIdx = 1U;
