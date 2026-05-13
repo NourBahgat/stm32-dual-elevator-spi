@@ -15,7 +15,7 @@
 #define RCC_GPIOD           (RCC_AHB1*32 + 3UL)
 #define RCC_GPIOE           (RCC_AHB1*32 + 4UL)
 #define RCC_GPIOH           (RCC_AHB1*32 + 7UL)
-#define RCC_CRC             (RCC_AHB1*32 + 2UL)
+#define RCC_CRC             (RCC_AHB1*32 + 12UL)  /* CRC is bit 12 of AHB1ENR, not bit 2 */
 #define RCC_DMA1            (RCC_AHB1*32 + 21UL)
 #define RCC_DMA2            (RCC_AHB1*32 + 22UL)
 

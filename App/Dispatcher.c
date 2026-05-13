@@ -157,8 +157,10 @@ Dispatch_Result Dispatcher_AssignElevator(uint8 call_floor,
         ((B->State == FSM_MOVING_UP   && call_direction == DIR_DOWN) ||
          (B->State == FSM_MOVING_DOWN && call_direction == DIR_UP));
 
-    /* All available elevators are going the wrong way — defer */
-    if ((a_ok ? a_opposite : 1U) && (b_ok ? b_opposite : 1U)) {
+    /* All available elevators are going the wrong way — defer.
+     * Logic: defer if (A unavailable OR A opposite) AND (B unavailable OR B opposite).
+     * This defers only when all AVAILABLE elevators are moving opposite direction. */
+    if ((!a_ok || a_opposite) && (!b_ok || b_opposite)) {
       deferred_floor     = call_floor;
       deferred_direction = call_direction;
       return DISPATCH_NONE;

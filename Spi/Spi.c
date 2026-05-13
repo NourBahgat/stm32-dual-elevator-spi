@@ -135,10 +135,11 @@ uint8 Spi1_StartTransfer(uint8 *TxBuffer, uint8 *RxBuffer) {
     spi_RxIdx  = 0U;
     spi_Status = SPI_STATUS_BUSY;
 
-    /* Pre-load byte 0 into the hardware shift register immediately.
-     * Both roles MUST do this to ensure data is on the line before the 
-     * first clock edge (Slave) or immediately upon start (Master). */
-    if (SPI1->SR & (1U << SPI_SR_TXE_POS)) {
+    /* Pre-load byte 0 into the hardware shift register.
+     * MASTER: pre-loads immediately to clock data out on SCK rising edge.
+     * SLAVE:  does NOT pre-load to avoid one-byte frame shift; 
+     *         waits for Master's clock to synchronize first byte TX/RX. */
+    if (spi_Role == SPI_MASTER && (SPI1->SR & (1U << SPI_SR_TXE_POS))) {
         SPI1->DR  = (uint32)spi_TxBuf[0];
         spi_TxIdx = 1U;
     }

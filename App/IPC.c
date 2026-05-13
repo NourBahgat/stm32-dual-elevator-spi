@@ -20,6 +20,7 @@ static uint8 ipc_RxBuf[SPI_FRAME_SIZE];
 
 volatile uint8 ipc_TimeoutCounter = 0U;
 volatile uint8 Ipc_CommFault = 0U;
+volatile uint32 last_spi_rx_timestamp = 0U;  /* defined here to match IPC.h extern */
 
 #if IS_SLAVE()
 volatile uint32 ipc_SlaveTimeoutCounter = 0U;
@@ -97,14 +98,7 @@ void IPC_UnpackFrame(const uint8 *RxBuf, Ipc_ElevatorState *RemoteState)
 
 void IPC_OnFrameReceived(uint8 *RxBuf)
 {
-  static uint8 first_frame = 1;
-  
   if (IPC_ValidateFrame(RxBuf) == SPI_OK) {
-    if (IS_SLAVE() && first_frame) {
-        Usart1_TransmitString("[IPC] First SPI frame received from Master!\r\n");
-        first_frame = 0;
-    }
-    
     IPC_UnpackFrame(RxBuf, (Ipc_ElevatorState *)&ipc_RemoteState);
     ipc_TimeoutCounter = 0U; 
     Ipc_CommFault = 0U;
@@ -125,9 +119,6 @@ void IPC_OnFrameReceived(uint8 *RxBuf)
     ipc_SlaveTimeoutCounter = 0U;
     if (ipc_RemoteState.Flags & IPC_FLAG_DISPATCH_REQ) {
         uint8 target_floor = IPC_FLAGS_DECODE_FLOOR(ipc_RemoteState.Flags);
-        Usart1_TransmitString("[IPC] Dispatch command received: Floor ");
-        Usart1_TransmitByte((uint8)('0' + target_floor));
-        Usart1_TransmitString("\r\n");
         Elevator_FSM_RequestFloor(target_floor);
     }
 #else
@@ -135,15 +126,6 @@ void IPC_OnFrameReceived(uint8 *RxBuf)
 #endif
   } 
   else {
-    if (IS_MASTER() && (RxBuf[0] != 0xFF)) {
-        Usart1_TransmitString("[IPC] Frame checksum error! RAW: ");
-        const char HEX[] = "0123456789ABCDEF";
-        for (uint8 i = 0; i < SPI_FRAME_SIZE; i++) {
-            char s[3] = { HEX[(RxBuf[i] >> 4) & 0x0F], HEX[RxBuf[i] & 0x0F], ' ' };
-            Usart1_TransmitString(s);
-        }
-        Usart1_TransmitString("\r\n");
-    }
     if (IS_MASTER()) Spi1_DeassertCS();
   }
 
