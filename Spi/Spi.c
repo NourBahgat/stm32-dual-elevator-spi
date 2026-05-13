@@ -139,7 +139,7 @@ uint8 Spi1_StartTransfer(uint8 *TxBuffer, uint8 *RxBuffer) {
      * MASTER: pre-loads immediately to clock data out on SCK rising edge.
      * SLAVE:  does NOT pre-load to avoid one-byte frame shift; 
      *         waits for Master's clock to synchronize first byte TX/RX. */
-    if (spi_Role == SPI_MASTER && (SPI1->SR & (1U << SPI_SR_TXE_POS))) {
+    if (SPI1->SR & (1U << SPI_SR_TXE_POS)) {
         SPI1->DR  = (uint32)spi_TxBuf[0];
         spi_TxIdx = 1U;
     }
