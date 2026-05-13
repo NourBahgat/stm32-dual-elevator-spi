@@ -69,6 +69,17 @@ static const char* state_names[] = {
     "EMERGENCY"
 };
 
+/* Standard Cortex-M system reset via SCB->AIRCR. Equivalent to NVIC_SystemReset(). */
+#define SCB_AIRCR_REG  REG32(0xE000ED0CU)
+
+static void Trigger_SystemReset(void)
+{
+    SCB_AIRCR_REG = (0x5FAU << 16) | (1U << 2);
+    while (1) {
+        /* wait for reset */
+    }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
  * PRIVATE HELPERS — floor request queue
  * ══════════════════════════════════════════════════════════════════════════ */
@@ -188,6 +199,14 @@ static void ISR_EmergencyStop(void)
     Exit_Critical();                /* re-enable interrupts                 */
 }
 
+/* ── Reset Button (PB11) — software reset after emergency ─────────────── */
+static void ISR_ResetButton(void)
+{
+    if (localState.State == FSM_EMERGENCY) {
+        Trigger_SystemReset();
+    }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
  * PUBLIC API
  * ══════════════════════════════════════════════════════════════════════════ */
@@ -232,6 +251,9 @@ void Elevator_FSM_Init(uint8 startFloor)
     Gpio_Init(GPIO_B, 12U, GPIO_INPUT, GPIO_PULL_UP);
     Gpio_Init(GPIO_B, 13U, GPIO_INPUT, GPIO_PULL_UP);
 
+    /* ── GPIO: Reset Button on PB11 (input, internal pull-up) ─────────── */
+    Gpio_Init(GPIO_B, 11U, GPIO_INPUT, GPIO_PULL_UP);
+
     /* ── GPIO: Emergency Stop on PA15 (input, internal pull-up) ──────── */
     Gpio_Init(GPIO_A, 15U, GPIO_INPUT, GPIO_PULL_UP);
 
@@ -247,6 +269,9 @@ void Elevator_FSM_Init(uint8 startFloor)
     Exti_Init(EXTI_LINE_12, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_Sensor_F3);
     Exti_Init(EXTI_LINE_13, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_Sensor_F4);
 
+    /* ── EXTI: Reset Button — falling edge ─────────────────────────────── */
+    Exti_Init(EXTI_LINE_11, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_ResetButton);
+
     /* ── EXTI: Emergency Stop — falling edge ───────────────────────────── */
     Exti_Init(EXTI_LINE_15, EXTI_PORT_A, EXTI_EDGE_FALLING, ISR_EmergencyStop);
 
@@ -259,6 +284,7 @@ void Elevator_FSM_Init(uint8 startFloor)
     Exti_Enable(EXTI_LINE_14);  /* Sensor F2 (PB14) */
     Exti_Enable(EXTI_LINE_12);  /* Sensor F3 */
     Exti_Enable(EXTI_LINE_13);  /* Sensor F4 */
+    Exti_Enable(EXTI_LINE_11);  /* Reset Button */
     Exti_Enable(EXTI_LINE_15);  /* Emergency Stop */
 
     /*
