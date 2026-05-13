@@ -109,6 +109,18 @@ void IPC_OnFrameReceived(uint8 *RxBuf)
     ipc_TimeoutCounter = 0U; 
     Ipc_CommFault = 0U;
 
+#if IS_MASTER()
+        /* The full-duplex exchange completed successfully, so the Master
+         * can drop any pending dispatch request it had encoded in its last
+         * TX frame. This prevents the same hall-call from being re-sent on
+         * subsequent 50 ms IPC_MasterTick() cycles. */
+        if (localState.Flags & IPC_FLAG_DISPATCH_REQ) {
+            Enter_Critical();
+            localState.Flags &= (uint8)(~IPC_FLAG_DISPATCH_REQ);
+            Exit_Critical();
+        }
+#endif
+
 #if IS_SLAVE()
     ipc_SlaveTimeoutCounter = 0U;
     if (ipc_RemoteState.Flags & IPC_FLAG_DISPATCH_REQ) {

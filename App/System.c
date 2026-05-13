@@ -80,8 +80,7 @@ volatile uint8 flag_500ms_tick = 0;
 static uint32 last_50ms_tick  = 0;
 static uint32 last_10ms_tick  = 0;
 static uint32 last_100ms_tick = 0;
-static PwmContext_t motor_a;
-static PwmContext_t motor_b;
+/* PWM contexts are owned by main.c to avoid duplicate instances. */
 /* ========================================================================
  * SysTick_Handler
  *
@@ -190,15 +189,9 @@ void System_Init(void) {
     Pwm_Init(TIMER2, PWM_CHANNEL_2, 15U, 99U);  /* Motor B */
     Pwm_Start(TIMER2, PWM_CHANNEL_1);
     Pwm_Start(TIMER2, PWM_CHANNEL_2);
-    PwmScheduler_Init(&motor_a, TIMER2, PWM_CHANNEL_1);
-    PwmScheduler_Init(&motor_b, TIMER2, PWM_CHANNEL_2);
-    Nvic_SetPriority(TIM5_IRQn,   2U);
-    Nvic_SetPriority(SPI1_IRQn,   2U);
-    Nvic_SetPriority(USART1_IRQn, 3U);
 
-    /* Enable TIM5 Update Interrupt (UIE) before starting */
-    REG32(TIM5_BASE_ADDR + 0x0C) |= 0x01; /* TIM5->DIER |= 1 */
-    
+    /* ---- 4. Enable IRQs ----------------------------------------------- */
+    Nvic_SetPriority(SPI1_IRQn,   2U);
     Nvic_EnableIrq(TIM5_IRQn);
     Nvic_EnableIrq(SPI1_IRQn);
 

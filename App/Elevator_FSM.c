@@ -22,7 +22,7 @@
  * HOW IT CONNECTS TO THE REST OF THE PROJECT:
  *   - IPC.c reads localState via Elevator_FSM_GetSnapshot() (atomic copy)
  *   - Dispatcher.c reads the snapshot to run the task allocation algorithm
- *   - main.c calls Elevator_FSM_Tick() every 500 ms via the TIM5 hook
+ *   - main.c calls Elevator_FSM_Tick() periodically from the scheduler
  */
 
 #include "Elevator_FSM.h"
@@ -49,10 +49,10 @@ volatile Ipc_ElevatorState localState = {
 
 /* ══════════════════════════════════════════════════════════════════════════
  * DOOR TIMER
- * Counted in Elevator_FSM_Tick() calls (each tick = 500 ms).
+ * Counted in Elevator_FSM_Tick() calls (each tick = 10 ms).
  * Doors stay open for DOOR_OPEN_TICKS ticks = 2 seconds.
  * ══════════════════════════════════════════════════════════════════════════ */
-#define DOOR_OPEN_TICKS  4U          /* 4 × 500 ms = 2 s                   */
+#define DOOR_OPEN_TICKS  200U        /* 200 × 10 ms = 2 s                  */
 static uint8 door_open_counter = 0U;
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -83,17 +83,30 @@ static void Queue_Clear(uint8 floor)
 static uint8 Queue_NextInDirection(void)
 {
     if (localState.Direction == DIR_UP) {
-        /* Scan floors above the current floor */
-        for (uint8 f = localState.Floor + 1U; f <= ELEVATOR_MAX_FLOOR; f++) {
-            if (Queue_Has(f)) return f;
+
+        /* Scan floors above current floor */
+        for (uint8 f = localState.Floor + 1U;
+             f <= ELEVATOR_MAX_FLOOR;
+             f++)
+        {
+            if (Queue_Has(f)) {
+                return f;
+            }
         }
+
     } else if (localState.Direction == DIR_DOWN) {
-        /* Scan floors below the current floor */
-        for (uint8 f = localState.Floor - 1U; f >= ELEVATOR_MIN_FLOOR; f--) {
-            if (Queue_Has(f)) return f;
-            if (f == ELEVATOR_MIN_FLOOR) break; /* prevent uint8 underflow */
+
+        /* Scan floors below current floor */
+        for (sint8 f = (sint8)localState.Floor - 1;
+             f >= (sint8)ELEVATOR_MIN_FLOOR;
+             f--)
+        {
+            if (Queue_Has((uint8)f)) {
+                return (uint8)f;
+            }
         }
     }
+
     return 0U;
 }
 
@@ -107,10 +120,13 @@ static uint8 Queue_NextAny(uint8 *out_direction)
             return f;
         }
     }
-    for (uint8 f = ELEVATOR_MAX_FLOOR; f >= ELEVATOR_MIN_FLOOR; f--) {
-        if (Queue_Has(f) && f < localState.Floor) {
+    for (sint8 f = ELEVATOR_MAX_FLOOR;
+        f >= ELEVATOR_MIN_FLOOR;
+        f--)
+    {
+        if (Queue_Has((uint8)f) && f < localState.Floor) {
             *out_direction = DIR_DOWN;
-            return f;
+            return (uint8)f;
         }
     }
     /* Request exactly at the current floor (e.g. door re-open) */
@@ -244,7 +260,7 @@ void Elevator_FSM_Init(uint8 startFloor)
 /*
  * Elevator_FSM_Tick
  * -----------------
- * Called every 500 ms from Application_500ms_Tick() in main.c.
+ * Called every 10 ms from Application_0ms_Tick() in main.c
  * Advances the FSM one step.
  *
  * STATE MACHINE DIAGRAM:

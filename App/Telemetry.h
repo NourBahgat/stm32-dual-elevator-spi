@@ -16,7 +16,7 @@
 #include "Std_Types.h"
 
 /**
- * Telemetry frame format (7 bytes):
+ * Telemetry frame format (6 bytes):
  *   [0] = SYNC byte (0xAA)
  *   [1] = FSM state
  *   [2] = Current floor (1-4)

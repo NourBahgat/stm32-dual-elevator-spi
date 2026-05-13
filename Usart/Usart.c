@@ -87,11 +87,10 @@ void Usart1_TransmitDMA(uint8 *data, uint16 len)
         return;
     }
 
-    /* Disable stream before configuration */
+    /* Stream is guaranteed idle here because the caller checks EN above.
+     * Do not spin waiting for hardware to clear it; the project forbids
+     * busy-wait paths outside the UART debug output path. */
     DMA2_Stream7->CR &= ~DMA_SxCR_EN;
-    while ((DMA2_Stream7->CR & DMA_SxCR_EN) != 0U) {
-        /* wait for hardware to clear EN */
-    }
 
     /* Configure channel selection */
     DMA2_Stream7->CR &= ~(7U << 25U);

@@ -156,8 +156,6 @@ void Telemetry_SendPolling(const TelemetryFrame_t *frame)
  * ======================================================================== */
 void Telemetry_Tick(void)
 {
-    uint8 *data;
-
 #ifdef TELEMETRY_USE_HAL_DMA
     /* When DMA/TX is used the HAL will drive the transfer; nothing to do
      * in the periodic tick unless we want to implement a software timeout
@@ -173,6 +171,8 @@ void Telemetry_Tick(void)
     (void)telemetry_tx_index;
 
 #else
+    uint8 *data;
+
     if (telemetry_active == 0U) {
         if (telemetry_pending == 0U) {
             return;

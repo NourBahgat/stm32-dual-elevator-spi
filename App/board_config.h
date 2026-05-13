@@ -19,7 +19,9 @@
 #define ROLE_MASTER  1U
 #define ROLE_SLAVE   0U
 
-#if defined(BOARD_ROLE_SLAVE) && BOARD_ROLE_SLAVE == 1
+#if defined(BOARD_ROLE_MASTER) && BOARD_ROLE_MASTER == 1
+    #define BOARD_ROLE  ROLE_MASTER
+#elif defined(BOARD_ROLE_SLAVE) && BOARD_ROLE_SLAVE == 1
     #define BOARD_ROLE  ROLE_SLAVE
 #else
     /* Default to Master if not explicitly set */

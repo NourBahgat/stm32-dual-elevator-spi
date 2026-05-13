@@ -1,6 +1,15 @@
 #include "Dma.h"
 #include "Rcc.h"
 #include "stm32f401xe.h"
+#include "Nvic.h"
+
+/* Some build configurations may not expose the CMSIS IRQ name for DMA2
+ * before this file is included. Provide a fallback numeric definition so
+ * `Nvic_SetPriority()` can be called without requiring a specific include
+ * order. STM32F4 DMA2 Stream7 global IRQ number is 70 (per CMSIS headers). */
+#ifndef DMA2_Stream7_IRQn
+#define DMA2_Stream7_IRQn 70U
+#endif
 
 /* Minimal init: enable DMA2 clock and NVIC for Stream7 */
 void Dma_Init(void)
@@ -8,8 +17,9 @@ void Dma_Init(void)
     /* Enable DMA2 clock via RCC helper */
     Rcc_Enable(RCC_DMA2);
 
-    /* Enable NVIC for DMA2 Stream7 (IRQ number from CMSIS) */
-    NVIC_EnableIRQ(DMA2_Stream7_IRQn);
+    /* Set a safe priority for DMA IRQ and enable it using project NVIC API */
+    Nvic_SetPriority(DMA2_Stream7_IRQn, 4U);
+    Nvic_EnableIrq(DMA2_Stream7_IRQn);
 }
 
 /* DMA2 Stream7 IRQ handler — forward transfer-complete to telemetry */
