@@ -143,6 +143,13 @@ void Application_100ms_Tick(void)
         }
     }
 #endif
+
+    /* Print Local Queue frequently (every 100ms) */
+    if (IS_MASTER()) {
+        Elevator_FSM_PrintQueue((const Ipc_ElevatorState *)&fsm_snapshot, "[Master]");
+    } else {
+        Elevator_FSM_PrintQueue((const Ipc_ElevatorState *)&fsm_snapshot, "[Slave ]");
+    }
 }
 
 /* =========================================================
@@ -150,13 +157,6 @@ void Application_100ms_Tick(void)
  * ========================================================= */
 void Application_500ms_Tick(void)
 {
-    /* 1. Terminal Heartbeat (Human readable) */
-    if (IS_MASTER()) {
-        Usart1_TransmitString("[Master] System OK...\r\n");
-    } else {
-        Usart1_TransmitString("[Slave] System OK...\r\n");
-    }
-
     /* 2. Telemetry (DMA safe) */
     if (dma_busy)
         return;

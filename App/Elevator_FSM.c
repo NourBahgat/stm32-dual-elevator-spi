@@ -66,7 +66,8 @@ static const char* state_names[] = {
     "MOVING_UP", 
     "MOVING_DOWN", 
     "DOORS_OPEN", 
-    "EMERGENCY"
+    "EMERGENCY",
+    "DOORS_CLOSING"
 };
 
 /* Standard Cortex-M system reset via SCB->AIRCR. Equivalent to NVIC_SystemReset(). */
@@ -406,13 +407,22 @@ void Elevator_FSM_Tick(void)
         if ((system_time_ms - door_open_start_ms) >= DOOR_OPEN_MS) {
             Usart1_TransmitString("[FSM] Doors closed -> IDLE\r\n");
             Enter_Critical();
-            localState.State     = FSM_IDLE;
+            localState.State     = FSM_DOORS_CLOSING;  // NEW intermediate state
             localState.Direction = DIR_NONE;
-            door_open_start_ms   = 0U;
+            door_open_start_ms   = system_time_ms;     // reuse timer for close delay
             Exit_Critical();
         }
         break;
-
+        case FSM_DOORS_CLOSING:
+        // Hold at 0% duty for at least one full PWM ramp-down cycle (50 ms)
+            if ((system_time_ms - door_open_start_ms) >= 60U) {
+                Usart1_TransmitString("[FSM] Doors closed -> IDLE\r\n");
+                Enter_Critical();
+                localState.State     = FSM_IDLE;
+                localState.Direction = DIR_NONE;
+                Exit_Critical();
+            }
+            break;
     default:
         Enter_Critical();
         localState.State = FSM_IDLE;
@@ -486,4 +496,31 @@ Ipc_ElevatorState Elevator_FSM_GetSnapshot(void)
     Exit_Critical();                        /* UNLOCK */
 
     return copy;
+}
+
+void Elevator_FSM_PrintQueue(const Ipc_ElevatorState *state, const char *label)
+{
+    if (state == (void *)0 || label == (void *)0) return;
+
+    Usart1_TransmitString(label);
+    Usart1_TransmitString(" Queue: [");
+
+    uint8 first = 1;
+    for (uint8 f = 1; f <= 4; f++) {
+        uint8 has = 0;
+        if (f <= 2) {
+            has = (state->QueueLo & (uint8)(1U << (f - 1U))) != 0U;
+        } else {
+            has = (state->QueueHi & (uint8)(1U << (f - 3U))) != 0U;
+        }
+
+        if (has) {
+            if (!first) Usart1_TransmitString(", ");
+            char fChar = (char)('0' + f);
+            char s[2] = { fChar, '\0' };
+            Usart1_TransmitString(s);
+            first = 0;
+        }
+    }
+    Usart1_TransmitString("]\r\n");
 }

@@ -1,5 +1,6 @@
 #include "pwm_scheduler.h"
 #include "Usart.h"  /* for debug output */
+#include <stdio.h>
 
 /* =========================
  * STATE → SPEED MAPPING
@@ -10,7 +11,8 @@
         [ELEV_DOORS_OPEN]  = 20,
         [ELEV_MOVING_UP]   = 100,
         [ELEV_MOVING_DOWN] = 100,
-        [ELEV_EMERGENCY]   = 0
+        [ELEV_EMERGENCY]   = 0,
+        [ELEV_DOORS_CLOSING] = 0
     };
     // StateToDuty maps FSM states to target PWM duty cycles.
     //  This decouples the FSM logic from the motor control logic and allows easy tuning of speeds for each state.
@@ -131,13 +133,5 @@ void PwmScheduler_Tick(PwmContext_t *ctx)
         ctx->current_duty = 100U;
 
     Pwm_SetDutyPercent(ctx->TimerId, ctx->Channel, ctx->current_duty);
-    
-    /* DEBUG: Print duty cycle when ramping */
-    if (ctx->ramp_active) {
-        Usart1_TransmitString("[PWM] Duty: ");
-        Usart1_TransmitByte((uint8)('0' + (ctx->current_duty / 10)));
-        Usart1_TransmitByte((uint8)('0' + (ctx->current_duty % 10)));
-        Usart1_TransmitString("%\r\n");
-    }
+        
 }
-// $$\text{Total Time} = 5 \times 10\text{ms} = 50\text{ms}$$

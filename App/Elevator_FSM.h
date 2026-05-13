@@ -15,6 +15,8 @@
 #define FSM_MOVING_DOWN  2U
 #define FSM_DOORS_OPEN   3U
 #define FSM_EMERGENCY    4U
+#define FSM_DOORS_CLOSING 5U   // transient state: motor stopped, waiting 1 tick
+
 
 /* ── Direction values  (stored in Ipc_ElevatorState.Direction as uint8) */
 #define DIR_NONE 0U
@@ -30,5 +32,6 @@ void Elevator_FSM_Tick(void);
 void Elevator_FSM_RequestFloor(uint8 floor);
 void Elevator_FSM_SetEmergency(void);
 Ipc_ElevatorState Elevator_FSM_GetSnapshot(void);
+void Elevator_FSM_PrintQueue(const Ipc_ElevatorState *state, const char *label);
 
 #endif /* ELEVATOR_FSM_H */
