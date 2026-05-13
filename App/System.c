@@ -28,6 +28,7 @@
 #include "Usart.h"
 #include "Utils.h"           /* REG32, Enter_Critical, Exit_Critical */
 #include "../Dma/Dma.h"
+#include "Iwdg.h"
 
 /* TIM5 register access via base address */
 #define TIM5  ((TimerType *)TIM5_BASE_ADDR)
@@ -201,6 +202,9 @@ void System_Init(void) {
     /* SysTick: 1 kHz → interrupt every 1 ms
      *   LOAD = 16 MHz / 1000 = 16000 counts */
     SysTick_Config_Local(16000U);
+
+    /* ---- 6. Safety: Start Watchdog ------------------------------------ */
+    Iwdg_Init(1000U); /* 1 second timeout */
 }
 
 /* ========================================================================
@@ -245,4 +249,7 @@ void System_MainLoop_Iteration(void) {
 
     /* Background: low-priority tasks (UART drain, button debounce) */
     Application_BackgroundTick();
+
+    /* Safety: Refresh Watchdog */
+    Iwdg_Refresh();
 }

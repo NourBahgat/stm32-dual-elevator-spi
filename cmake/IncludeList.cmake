@@ -14,6 +14,7 @@ set(INCLUDE_LIST ${INCLUDE_LIST}
         ${PROJECT_PATH}/RingBuffer
         ${PROJECT_PATH}/Usart
         ${PROJECT_PATH}/App
+        ${PROJECT_PATH}/Iwdg
 )
 
 if (USE_HAL)
