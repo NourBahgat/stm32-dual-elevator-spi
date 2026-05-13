@@ -21,11 +21,13 @@
 #include "Gpio.h"
 #include "Nvic.h"
 #include "Pwm.h"
+#include "pwm_scheduler.h"
 #include "Rcc.h"
 #include "Timer.h"
 #include "Timer_Private.h"   /* TimerType, TIM5_BASE_ADDR, SR_UIF */
 #include "Usart.h"
 #include "Utils.h"           /* REG32, Enter_Critical, Exit_Critical */
+#include "../Dma/Dma.h"
 
 /* TIM5 register access via base address */
 #define TIM5  ((TimerType *)TIM5_BASE_ADDR)
@@ -66,17 +68,20 @@ volatile uint32 system_time_ms = 0;
  * Event Flags (ISRs set these, application clears)
  * ======================================================================== */
 volatile uint8 flag_1ms_tick   = 0;
+volatile uint8 flag_50ms_tick  = 0;
 volatile uint8 flag_10ms_tick  = 0;
 volatile uint8 flag_100ms_tick = 0;
 volatile uint8 flag_500ms_tick = 0;
 
 /* ========================================================================
  * Scheduler State (main loop tracking)
- * Used to generate 10ms and 100ms ticks from 1ms SysTick
+ * Used to generate 50ms, 10ms and 100ms ticks from 1ms SysTick
  * ======================================================================== */
+static uint32 last_50ms_tick  = 0;
 static uint32 last_10ms_tick  = 0;
 static uint32 last_100ms_tick = 0;
-
+static PwmContext_t motor_a;
+static PwmContext_t motor_b;
 /* ========================================================================
  * SysTick_Handler
  *
@@ -97,7 +102,8 @@ void SysTick_Handler(void) {
 void TIM5_IRQHandler(void) {
     /* Check update interrupt flag (UIF, bit 0 of SR) */
     if (READ_BIT(TIM5->SR, SR_UIF)) {
-        TIM5->SR = 0;        /* Clear UIF                          */
+        // TIM5->SR = 0;        /* Clear UIF                          */
+        CLEAR_BIT(TIM5->SR, SR_UIF);
         flag_500ms_tick = 1; /* Signal application layer           */
     }
 }
@@ -106,6 +112,10 @@ void TIM5_IRQHandler(void) {
  * System_Scheduler_Task (private)
  * ======================================================================== */
 static void System_Scheduler_Task(void) {
+    if (system_time_ms - last_50ms_tick >= 50U) {
+        last_50ms_tick = system_time_ms;
+        flag_50ms_tick = 1;
+    }
     if (system_time_ms - last_10ms_tick >= 10U) {
         last_10ms_tick = system_time_ms;
         flag_10ms_tick = 1;
@@ -151,6 +161,9 @@ void System_Init(void) {
     /* UART for telemetry (sets up PA9/PA10 as TX/RX AF7, enables RXNEIE) */
     Usart1_Init();
 
+    /* DMA subsystem for USART1 TX (register-level) */
+    Dma_Init();
+
     /* TIM5: 500 ms period
      *   PSC = 15999 → f_cnt = 16 MHz / 16000 = 1 kHz
      *   ARR = 499   → overflow every 500 ticks = 500 ms */
@@ -168,7 +181,8 @@ void System_Init(void) {
     Pwm_Init(TIMER2, PWM_CHANNEL_2, 15U, 99U);  /* Motor B */
     Pwm_Start(TIMER2, PWM_CHANNEL_1);
     Pwm_Start(TIMER2, PWM_CHANNEL_2);
-
+    PwmScheduler_Init(&motor_a, TIMER2, PWM_CHANNEL_1);
+    PwmScheduler_Init(&motor_b, TIMER2, PWM_CHANNEL_2);
     /* ---- 4. Enable IRQs ----------------------------------------------- */
     Nvic_EnableIrq(TIM5_IRQn);
     /* USART1_IRQn enabled inside Usart1_Init() */
@@ -209,11 +223,18 @@ void System_MainLoop_Iteration(void) {
         Application_100ms_Tick();
     }
 
-    /* 500 ms: FSM tick, Dispatcher, Telemetry */
+    /* 50 ms: dispatcher + IPC sync */
+    if (flag_50ms_tick) {
+        flag_50ms_tick = 0;
+        Application_50ms_Tick();
+    }
+
+    /* 500 ms: telemetry */
     if (flag_500ms_tick) {
         flag_500ms_tick = 0;
         System_Tick_500ms();
     }
+  
 
     /* Background: low-priority tasks (UART drain, button debounce) */
     Application_BackgroundTick();

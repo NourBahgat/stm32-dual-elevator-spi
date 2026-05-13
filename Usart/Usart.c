@@ -1,4 +1,8 @@
 #include "Usart.h"
+#ifdef USART1
+#undef USART1
+#endif
+#include "stm32f401xe.h"
 #include "Gpio.h"
 #include "Nvic.h"
 #include "RingBuffer.h"
@@ -55,6 +59,9 @@ void Usart1_Init(void) {
     /* ----- Enable RXNE interrupt ----------------------------------------- */
     USART1->CR1 |= (1U << USART_CR1_RXNEIE_POS);
 
+    /* Enable DMA transmitter for USART1 (DMAT bit in CR3) */
+    USART1->CR3 |= (1U << 7U);
+
     /* ----- Initialise ring buffer ---------------------------------------- */
     RB_Init(&usart1_rx_ring);
 
@@ -63,6 +70,61 @@ void Usart1_Init(void) {
 
     /* ----- Enable USART1 ------------------------------------------------- */
     USART1->CR1 |= (1U << USART_CR1_UE_POS);
+}
+
+/* =========================================================================
+ * Usart1_TransmitDMA
+ *
+ * Configure DMA2 Stream7 Channel4 for memory-to-peripheral USART1 TX.
+ * If the stream is already enabled, the function returns immediately.
+ * This function does not block; completion is signalled by the
+ * DMA2_Stream7 IRQ which calls Telemetry_DMA_CompleteCallback().
+ * ========================================================================= */
+void Usart1_TransmitDMA(uint8 *data, uint16 len)
+{
+    /* If stream already enabled, do nothing (busy) */
+    if ((DMA2_Stream7->CR & DMA_SxCR_EN) != 0U) {
+        return;
+    }
+
+    /* Disable stream before configuration */
+    DMA2_Stream7->CR &= ~DMA_SxCR_EN;
+    while ((DMA2_Stream7->CR & DMA_SxCR_EN) != 0U) {
+        /* wait for hardware to clear EN */
+    }
+
+    /* Configure channel selection */
+    DMA2_Stream7->CR &= ~(7U << 25U);
+    DMA2_Stream7->CR |=  (4U << 25U);
+
+    /* Configure transfer: memory->peripheral, peripheral no-incr, memory incr */
+    DMA2_Stream7->CR &= ~(
+        (3U << 6U)   |  /* DIR */
+        (3U << 16U)  |  /* PSIZE */
+        (3U << 13U)  |  /* MSIZE */
+        (1U << 9U)   |  /* PINC */
+        (1U << 10U)  |  /* MINC */
+        (1U << 8U)   |  /* PFCTRL */
+        (3U << 11U)  |  /* PL */
+        (1U << 18U)  |  /* DBM */
+        (1U << 19U)  |  /* CT */
+        (1U << 20U)  |  /* PBURST */
+        (1U << 21U));   /* MBURST */
+    DMA2_Stream7->CR |= (1U << 6U);  /* DIR = memory-to-peripheral */
+    DMA2_Stream7->CR |= (1U << 10U); /* MINC enable */
+
+    DMA2_Stream7->PAR  = (uint32_t)&USART1->DR;
+    DMA2_Stream7->M0AR = (uint32_t)data;
+    DMA2_Stream7->NDTR = (uint32_t)len;
+
+    /* Clear pending interrupt flags for stream 7 */
+    DMA2->HIFCR = DMA_HIFCR_CTCIF7 | DMA_HIFCR_CTEIF7 | DMA_HIFCR_CHTIF7 | DMA_HIFCR_CFEIF7;
+
+    /* Enable transfer-complete interrupt */
+    DMA2_Stream7->CR |= (1U << 4U);
+
+    /* Enable the stream to start transfer */
+    DMA2_Stream7->CR |= DMA_SxCR_EN;
 }
 
 /* =========================================================================

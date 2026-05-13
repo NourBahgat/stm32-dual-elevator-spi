@@ -136,4 +136,7 @@ char *Usart1_ReadLine(char *Buffer, uint32 MaxLen);
  */
 void USART1_IRQHandler(void);
 
+/* Non-blocking DMA transmit API (register-level DMA2 Stream7 for USART1 TX) */
+void Usart1_TransmitDMA(uint8 *data, uint16 len);
+
 #endif /* USART_H */

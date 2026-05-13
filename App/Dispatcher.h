@@ -2,7 +2,7 @@
 #define DISPATCHER_H
 
 #include "Std_Types.h"
-#include "Ipc.h"
+#include "IPC.h"
 #include "Elevator_FSM.h"
 
 /* ── Which elevator to dispatch ───────────────────────────────────── */

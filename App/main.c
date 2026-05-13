@@ -7,160 +7,160 @@
 /**
  * main.c
  *
- * Entry point for the dual-elevator STM32F401 firmware.
- *
- * Architecture: Event-driven, non-blocking, real-time
- *   - ISRs set flags only (<2 µs)
- *   - Main loop polls flags and dispatches application logic
- *   - No blocking delays, busy-wait loops, or polling in critical paths
- *
- * System Startup Sequence:
- *   1. System_Init()        → Initialize all drivers and ISRs
- *   2. Main event loop      → Poll flags, run application
- *
- * Timing:
- *   SysTick:   1 ms   (system clock)
- *   TIM5:      500 ms (FSM, Dispatcher, Telemetry)
- *   Motor PWM: 10 kHz (hardware-driven, autonomous)
+ * Dual Elevator STM32F401 Firmware
+ * Event-driven, deterministic, DMA-safe architecture
  */
 
 #include "Dispatcher.h"
 #include "Elevator_FSM.h"
 #include "HallCallButtons.h"
-#include "Ipc.h"
+#include "IPC.h"
 #include "Pwm.h"
 #include "System.h"
 #include "Timer.h"
 #include "Telemetry.h"
 #include "pwm_scheduler.h"
-#include "board_config.h"   /* IS_MASTER() / IS_SLAVE() */
+#include "board_config.h"
 
-/* ========================================================================
- * Global Motor Control Instances
- * Instance-based design allows flexible, decoupled control
- * ======================================================================== */
-
-/* Motor A: Master's own elevator */
+/* =========================================================
+ * Motor instances
+ * ========================================================= */
 static PwmContext_t motor_a;
-
-/* Motor B: Slave elevator (state tracking on master side) */
 static PwmContext_t motor_b;
 
-/* ========================================================================
- * main
- *
- * Entry point. Initialize system, then run event loop forever.
- * ======================================================================== */
-int main(void) {
-  /* ---- System Initialization ---------------------------------------- */
-  System_Init();
+/* =========================================================
+ * FSM snapshot (single source of truth)
+ * ========================================================= */
+static Ipc_ElevatorState fsm_snapshot;
 
-  /* ---- Application Layer Initialization ----------------------------- */
+/* =========================================================
+ * DMA telemetry buffers (double buffer)
+ * ========================================================= */
+static TelemetryFrame_t tx_frame_a;
+static TelemetryFrame_t tx_frame_b;
 
-  /* PWM Scheduler contexts */
-  PwmScheduler_Init(&motor_a, TIMER2, PWM_CHANNEL_1);
-  PwmScheduler_Init(&motor_b, TIMER2, PWM_CHANNEL_2);
+static TelemetryFrame_t *tx_active = &tx_frame_a;
+static TelemetryFrame_t *tx_next   = &tx_frame_b;
 
-  /* Elevator FSM (start at floor 1) */
-  Elevator_FSM_Init(1);
+static volatile uint8 dma_busy = 0;
 
-  /* IPC (inter-processor communication via SPI) */
-  IPC_Init();
+/* =========================================================
+ * System initialization
+ * ========================================================= */
+int main(void)
+{
+    System_Init();
+
+    /* PWM */
+    PwmScheduler_Init(&motor_a, TIMER2, PWM_CHANNEL_1);
+    PwmScheduler_Init(&motor_b, TIMER2, PWM_CHANNEL_2);
+
+    /* FSM */
+    Elevator_FSM_Init(1);
+
+    /* IPC */
+    IPC_Init();
 
 #if IS_MASTER()
-  /* Dispatcher and hall-call buttons are Master-only.
-   * The Slave receives dispatch commands via the IPC Flags byte
-   * and processes them inside IPC_OnFrameReceived().              */
-  Dispatcher_Init();
-  HallCallButtons_Init();
+    Dispatcher_Init();
+    HallCallButtons_Init();
 #endif
 
-  /* Telemetry system */
-  Telemetry_Init();
+    Telemetry_Init();
 
-  /* ---- Main Event Loop ---------------------------------------------- */
-  while (1) {
-    System_MainLoop_Iteration();
+    while (1)
+    {
+        System_MainLoop_Iteration();
+    }
 
-    /* The above handles all periodic tasks via flags.
-     * Below is where you might add lower-priority background work
-     * (e.g., LED blink, debug output, watchdog, etc.)
-     */
-  }
-
-  return 0;
+    return 0;
 }
 
-/**
- * 10 ms hook: PWM ramping is advanced here so the scheduler stays out of
- * interrupt context.
- */
-void Application_10ms_Tick(void) {
-  PwmScheduler_Tick(&motor_a);
-  PwmScheduler_Tick(&motor_b);
+/* =========================================================
+ * 10ms CONTROL LOOP (FSM + PWM)
+ * ========================================================= */
+static inline void MotorControl_10ms(void)
+{
+    /* FSM update */
+    Elevator_FSM_Tick();
+
+    /* snapshot */
+    fsm_snapshot = Elevator_FSM_GetSnapshot();
+    fsm_snapshot.MotorDuty = motor_a.current_duty;
+
+    /* motor control */
+    PwmScheduler_UpdateState(&motor_a, fsm_snapshot.State);
+    PwmScheduler_UpdateState(&motor_b, fsm_snapshot.State);
+
+    PwmScheduler_Tick(&motor_a);
+    PwmScheduler_Tick(&motor_b);
 }
 
-/**
- * 100 ms hook: comm-fault detection is handled by IPC_MasterTick() (50 ms
- * timer ISR) + IPC_OnFrameReceived() (SPI ISR).  No dispatcher call needed.
- */
-void Application_100ms_Tick(void) { /* reserved for future 100 ms tasks */ }
+void Application_10ms_Tick(void)
+{
+    MotorControl_10ms();
+}
 
-/**
- * 500 ms hook: run application decisions first, then queue telemetry.
- */
-void Application_500ms_Tick(void) {
-  static TelemetryFrame_t frame;
-  Ipc_ElevatorState local_snapshot = Elevator_FSM_GetSnapshot();
-  Ipc_ElevatorState remote_snapshot;
-  
-  /* Get the remote state from IPC */
-  IPC_GetRemoteStateSnapshot(&remote_snapshot);
-
-  uint8 telemetry_flags = local_snapshot.Flags;
-
-  /* Tick the local FSM and the global Dispatcher */
-  Elevator_FSM_Tick();
+/* =========================================================
+ * 50ms COORDINATION (Dispatcher + IPC)
+ * ========================================================= */
+void Application_50ms_Tick(void)
+{
 #if IS_MASTER()
-  Dispatcher_Tick();
-  IPC_MasterTick();
+    Dispatcher_Tick();
+    IPC_MasterTick();
 #endif
-#if IS_SLAVE()
-  IPC_SlaveTick();
-#endif
-
-  /* Update the local motor PWM based on the new FSM state */
-  PwmScheduler_UpdateState(&motor_a, (ElevatorState_t)local_snapshot.State);
-  
-  /* Update the remote motor PWM (tracking) based on the received IPC state */
-  PwmScheduler_UpdateState(&motor_b, (ElevatorState_t)remote_snapshot.State);
-
-  if (local_snapshot.Direction == DIR_UP) {
-    telemetry_flags |= 0x01U;
-  } else if (local_snapshot.Direction == DIR_DOWN) {
-    telemetry_flags |= 0x02U;
-  }
-
-  if (Ipc_CommFault != 0U) {
-    telemetry_flags |= 0x80U;
-  }
-
-  /* Build the 6-byte telemetry frame from the live application state. */
-  Telemetry_BuildFrame(&frame, local_snapshot.State, local_snapshot.Floor,
-                       motor_a.current_duty, telemetry_flags);
-
-  /* Queue the frame; Telemetry_Tick() drains it from the main loop. */
-  Telemetry_SendDMA(&frame);
 }
 
-/**
- * Background hook: keeps low-priority consumers running without blocking.
- */
-void Application_BackgroundTick(void) {
+/* =========================================================
+ * 100ms RESERVED
+ * ========================================================= */
+void Application_100ms_Tick(void)
+{
+    /* reserved */
+}
+
+/* =========================================================
+ * 500ms TELEMETRY (DMA safe)
+ * ========================================================= */
+void Application_500ms_Tick(void)
+{
+    if (dma_busy)
+        return;
+
+    Ipc_ElevatorState local_snapshot = fsm_snapshot;
+
+    Telemetry_BuildFrame(tx_next,
+                        local_snapshot.State,
+                        local_snapshot.Floor,
+                        local_snapshot.MotorDuty,
+                        local_snapshot.Flags);
+
+    dma_busy = 1;
+    Telemetry_SendDMA(tx_next);
+}
+/* =========================================================
+ * DMA complete callback
+ * ========================================================= */
+void Telemetry_DMA_CompleteCallback(void)
+{
+    dma_busy = 0;
+
+    /* swap buffers */
+    TelemetryFrame_t *tmp = tx_active;
+    tx_active = tx_next;
+    tx_next = tmp;
+}
+
+/* =========================================================
+ * Background tasks
+ * ========================================================= */
+void Application_BackgroundTick(void)
+{
 #if IS_MASTER()
-  HallCallButtons_Process();
+    HallCallButtons_Process();
 #endif
-  Telemetry_Tick();
 }
 
-#endif /* !DRIVER_TEST_MASTER && !DRIVER_TEST_SLAVE */
+#endif /* not DRIVER_TEST_* */
+

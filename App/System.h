@@ -29,6 +29,7 @@ extern volatile uint32 system_time_ms;
  * Set by ISRs, cleared by application
  * ======================================================================== */
 extern volatile uint8 flag_1ms_tick;
+extern volatile uint8 flag_50ms_tick;
 extern volatile uint8 flag_10ms_tick;
 extern volatile uint8 flag_100ms_tick;
 extern volatile uint8 flag_500ms_tick;
@@ -57,6 +58,7 @@ void System_Init(void);
  * dispatch.
  * ======================================================================== */
 void Application_10ms_Tick(void);
+void Application_50ms_Tick(void);
 void Application_100ms_Tick(void);
 void Application_500ms_Tick(void);
 void Application_BackgroundTick(void);
@@ -65,10 +67,7 @@ void Application_BackgroundTick(void);
  * System_Tick_500ms
  *
  * Called by main loop when flag_500ms_tick is set.
- * This is where heavy application logic runs:
- *   - Elevator_FSM_Tick()
- *   - Dispatcher_Tick()
- *   - Telemetry_SendDMA()
+ * This is where telemetry framing and UART drain run.
  *
  * NOT called from ISR — runs in main loop context (safe).
  * ======================================================================== */
