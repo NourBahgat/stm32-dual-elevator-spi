@@ -16,6 +16,7 @@
 #include "Dispatcher.h"     /* Dispatcher_AssignElevator, Dispatch_Result */
 #include "Gpio.h"
 #include "Exti.h"
+#include "Usart.h"
 #include "Utils.h"          /* Enter_Critical / Exit_Critical             */
 
 /* ── Shared ring buffer ───────────────────────────────────────────── */
@@ -120,11 +121,19 @@ void HallCallButtons_Process(void)
         Dispatch_Result winner = Dispatcher_AssignElevator(floor, dir);
 
         if (winner == DISPATCH_A) {
+            Usart1_TransmitString("[Buttons] Call assigned to LOCAL (A)\r\n");
             Elevator_FSM_RequestFloor(floor);
         } else if (winner == DISPATCH_B) {
+            Usart1_TransmitString("[Buttons] Call assigned to SLAVE (B)\r\n");
             localState.Flags = (uint8)(IPC_FLAG_DISPATCH_REQ |
                                        IPC_FLAGS_ENCODE_FLOOR(floor));
+        } else {
+            /* This happens if both elevators are currently moving or in a fault state */
+            if (Ipc_CommFault) {
+                Usart1_TransmitString("[Buttons] DEFERRED: Slave Offline (SPI Fault)\r\n");
+            } else {
+                Usart1_TransmitString("[Buttons] DEFERRED: Both elevators busy\r\n");
+            }
         }
-        /* DISPATCH_NONE: Dispatcher_Tick() retries on the next 50 ms tick */
     }
 }

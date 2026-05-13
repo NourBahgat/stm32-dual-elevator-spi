@@ -20,6 +20,7 @@
 #include "Timer.h"
 #include "Telemetry.h"
 #include "pwm_scheduler.h"
+#include "Usart.h"
 #include "board_config.h"
 
 /* =========================================================
@@ -67,6 +68,16 @@ int main(void)
 #endif
 
     Telemetry_Init();
+
+    /* ---- Boot Messages ------------------------------------------------- */
+#if IS_MASTER()
+    Usart1_TransmitString("\r\n[System] Master Elevator (A) Online\r\n");
+    Usart1_TransmitString("[System] IPC: SPI Master Mode (62.5kHz)\r\n");
+#else
+    Usart1_TransmitString("\r\n[System] Slave Elevator (B) Online\r\n");
+    Usart1_TransmitString("[System] IPC: SPI Slave Mode (62.5kHz)\r\n");
+#endif
+    Usart1_TransmitString("[System] Sensors: PB10, PB14, PB12, PB13\r\n\r\n");
 
     while (1)
     {
@@ -125,6 +136,14 @@ void Application_100ms_Tick(void)
  * ========================================================= */
 void Application_500ms_Tick(void)
 {
+    /* 1. Terminal Heartbeat (Human readable) */
+    if (IS_MASTER()) {
+        Usart1_TransmitString("[Master] System OK...\r\n");
+    } else {
+        Usart1_TransmitString("[Slave] System OK...\r\n");
+    }
+
+    /* 2. Telemetry (DMA safe) */
     if (dma_busy)
         return;
 

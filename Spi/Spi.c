@@ -135,11 +135,12 @@ uint8 Spi1_StartTransfer(uint8 *TxBuffer, uint8 *RxBuffer) {
     spi_RxIdx  = 0U;
     spi_Status = SPI_STATUS_BUSY;
 
-    if (spi_Role == SPI_MASTER) {
-        if (SPI1->SR & (1U << SPI_SR_TXE_POS)) {
-            SPI1->DR  = (uint32)spi_TxBuf[0];
-            spi_TxIdx = 1U;
-        }
+    /* Pre-load byte 0 into the hardware shift register immediately.
+     * Both roles MUST do this to ensure data is on the line before the 
+     * first clock edge (Slave) or immediately upon start (Master). */
+    if (SPI1->SR & (1U << SPI_SR_TXE_POS)) {
+        SPI1->DR  = (uint32)spi_TxBuf[0];
+        spi_TxIdx = 1U;
     }
 
     prv_EnableDataIrqs();
@@ -161,10 +162,13 @@ void SPI1_IRQHandler(void) {
 
     uint32 sr = SPI1->SR;
 
-    /* A. Error handling (OVR) */
+    /* A. Error handling (OVR)
+     * Clear OVR by reading DR then reading SR. */
     if (sr & (1U << 6)) {
-        (void)SPI1->DR;
-        (void)SPI1->SR;
+        volatile uint32 dummy;
+        dummy = SPI1->DR;
+        dummy = SPI1->SR;
+        (void)dummy;
     }
 
     /* B. RX Path */
@@ -185,7 +189,7 @@ void SPI1_IRQHandler(void) {
     }
 
     /* C. TX Path */
-    if ((SPI1->CR2 & (1U << SPI_CR2_TXEIE_POS)) && (sr & (1U << SPI_SR_TXE_POS)))
+    if ((SPI1->CR2 & (1U << SPI_CR2_TXEIE_POS)) && (SPI1->SR & (1U << SPI_SR_TXE_POS)))
     {
         if (spi_TxIdx < SPI_FRAME_SIZE) {
             SPI1->DR = (uint32)spi_TxBuf[spi_TxIdx];

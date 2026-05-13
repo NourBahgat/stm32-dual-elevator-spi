@@ -54,6 +54,13 @@ elseif(DRIVER_TEST_SLAVE)
     message(STATUS ">>> Building SLAVE  driver-test firmware (U2) <<<")
 else()
     message(STATUS ">>> Building PRODUCTION firmware <<<")
+    if(BOARD_ROLE_SLAVE)
+        target_compile_definitions(${EXECUTABLE} PUBLIC BOARD_ROLE_SLAVE=1)
+        message(STATUS ">>> Role: SLAVE <<<")
+    else()
+        target_compile_definitions(${EXECUTABLE} PUBLIC BOARD_ROLE_MASTER=1)
+        message(STATUS ">>> Role: MASTER <<<")
+    endif()
 endif()
 
 # Compiler options

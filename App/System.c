@@ -146,8 +146,17 @@ void System_Tick_500ms(void) { Application_500ms_Tick(); }
  * ======================================================================== */
 void System_Init(void) {
 
-    /* ---- 1. Clock Tree ------------------------------------------------ */
-    Rcc_Init();   /* APB1, APB2, HSI configuration */
+    /* ---- 1. Enable Peripheral Clocks (CRITICAL) ----------------------- */
+    Rcc_Init();
+    Rcc_Enable(RCC_GPIOA);
+    Rcc_Enable(RCC_GPIOB);
+    Rcc_Enable(RCC_GPIOC);
+    Rcc_Enable(RCC_USART1);
+    Rcc_Enable(RCC_SPI1);
+    Rcc_Enable(RCC_TIM2);
+    Rcc_Enable(RCC_TIM5);
+    Rcc_Enable(RCC_SYSCFG);
+    Rcc_Enable(RCC_DMA2);
 
     /* ---- 2. NVIC Priority Configuration ------------------------------- */
     /* SysTick has a fixed priority of 15 in ARM Cortex-M.
@@ -183,10 +192,15 @@ void System_Init(void) {
     Pwm_Start(TIMER2, PWM_CHANNEL_2);
     PwmScheduler_Init(&motor_a, TIMER2, PWM_CHANNEL_1);
     PwmScheduler_Init(&motor_b, TIMER2, PWM_CHANNEL_2);
-    /* ---- 4. Enable IRQs ----------------------------------------------- */
+    Nvic_SetPriority(TIM5_IRQn,   2U);
+    Nvic_SetPriority(SPI1_IRQn,   2U);
+    Nvic_SetPriority(USART1_IRQn, 3U);
+
+    /* Enable TIM5 Update Interrupt (UIE) before starting */
+    REG32(TIM5_BASE_ADDR + 0x0C) |= 0x01; /* TIM5->DIER |= 1 */
+    
     Nvic_EnableIrq(TIM5_IRQn);
-    /* USART1_IRQn enabled inside Usart1_Init() */
-    /* EXTI IRQs enabled inside Elevator_FSM_Init() and HallCallButtons_Init() */
+    Nvic_EnableIrq(SPI1_IRQn);
 
     /* ---- 5. Start Timers ---------------------------------------------- */
     Timer_Start(TIMER5);

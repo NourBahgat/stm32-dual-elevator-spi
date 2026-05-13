@@ -9,6 +9,7 @@
  */
 
 #include "Dispatcher.h"
+#include "Usart.h"
 /* IPC_GetRemoteStateSnapshot() is declared in Ipc.h (included via Dispatcher.h)
  */
 
@@ -194,18 +195,17 @@ void Dispatcher_Tick(void) {
   Dispatch_Result r =
       Dispatcher_AssignElevator(deferred_floor, deferred_direction);
   if (r != DISPATCH_NONE) {
-    /* Winner found — request the floor on the chosen elevator */
-    if (r == DISPATCH_A) {
-      Elevator_FSM_RequestFloor(deferred_floor);
-    } else if (r == DISPATCH_B) {
-      /* Relay to Slave via IPC command channel (Flags byte).
-       * localState is volatile; write via Elevator_FSM_RequestFloor
-       * indirection is not available here (different board target),
-       * so cast to non-volatile pointer for this single-byte write. */
-      ((Ipc_ElevatorState *)&localState)->Flags =
-          (uint8)(IPC_FLAG_DISPATCH_REQ |
-                  IPC_FLAGS_ENCODE_FLOOR(deferred_floor));
-    }
+      /* Winner found — request the floor on the chosen elevator */
+      if (r == DISPATCH_A) {
+        Usart1_TransmitString("[Dispatcher] Assigning call to LOCAL (A)\r\n");
+        Elevator_FSM_RequestFloor(deferred_floor);
+      } else if (r == DISPATCH_B) {
+        Usart1_TransmitString("[Dispatcher] Assigning call to SLAVE (B) via SPI\r\n");
+        /* Relay to Slave via IPC command channel (Flags byte). */
+        ((Ipc_ElevatorState *)&localState)->Flags =
+            (uint8)(IPC_FLAG_DISPATCH_REQ |
+                    IPC_FLAGS_ENCODE_FLOOR(deferred_floor));
+      }
     deferred_floor = NO_DEFERRED_CALL;
   }
 }
