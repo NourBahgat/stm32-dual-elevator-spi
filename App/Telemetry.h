@@ -16,23 +16,14 @@
 #include "Std_Types.h"
 
 /**
- * Telemetry frame format (6 bytes):
- *   [0] = SYNC byte (0xAA)
- *   [1] = FSM state
- *   [2] = Current floor (1-4)
- *   [3] = Motor duty cycle (0-100%)
- *   [4] = Flags (system state)
- *   [5] = Checksum (XOR of bytes 1-4)
+ * Telemetry frame format (Human-readable text):
+ *   Dynamic length string, max 40 bytes.
  */
-#define TELEMETRY_FRAME_LEN    6U
+#define TELEMETRY_MAX_LEN      40U
 
 typedef struct {
-    uint8 sync;           /* 0xAA */
-    uint8 fsm_state;
-    uint8 floor;
-    uint8 motor_duty;
-    uint8 flags;          /* custom flags */
-    uint8 checksum;
+    char data[TELEMETRY_MAX_LEN];
+    uint16 len;
 } TelemetryFrame_t;
 
 /**

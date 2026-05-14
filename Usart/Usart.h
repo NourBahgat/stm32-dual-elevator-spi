@@ -58,6 +58,14 @@ typedef struct {
 #define USART_CR2_STOP_MASK  (0x3U << USART_CR2_STOP_POS)
 
 /* =========================================================================
+ * CR3 — Control Register 3 bit positions
+ * ========================================================================= */
+#define USART_CR3_DMAT_POS   7U   /* DMA enable transmitter */
+#ifndef USART_CR3_DMAT
+#define USART_CR3_DMAT       (1U << USART_CR3_DMAT_POS)
+#endif
+
+/* =========================================================================
  * BRR value for target baud rates
  * Formula:  BRR = fCLK / (16 * BaudRate)
  * USART1 is on APB2 = 16 MHz (HSI default)

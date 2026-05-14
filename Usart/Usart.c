@@ -6,6 +6,7 @@
 #include "Gpio.h"
 #include "Nvic.h"
 #include "RingBuffer.h"
+#include "Dma.h"
 
 
 /* =========================================================================
@@ -60,7 +61,7 @@ void Usart1_Init(void) {
     USART1->CR1 |= (1U << USART_CR1_RXNEIE_POS);
 
     /* Enable DMA transmitter for USART1 (DMAT bit in CR3) */
-    USART1->CR3 |= (1U << 7U);
+    USART1->CR3 |= USART_CR3_DMAT;
 
     /* ----- Initialise ring buffer ---------------------------------------- */
     RB_Init(&usart1_rx_ring);
@@ -88,29 +89,18 @@ void Usart1_TransmitDMA(uint8 *data, uint16 len)
     }
 
     /* Stream is guaranteed idle here because the caller checks EN above.
-     * Do not spin waiting for hardware to clear it; the project forbids
-     * busy-wait paths outside the UART debug output path. */
+     * Force disable and wait for hardware to acknowledge per RM0368. */
     DMA2_Stream7->CR &= ~DMA_SxCR_EN;
+    while ((DMA2_Stream7->CR & DMA_SxCR_EN) != 0U) {
+        /* Wait for stream to be disabled */
+    }
 
-    /* Configure channel selection */
-    DMA2_Stream7->CR &= ~(7U << 25U);
-    DMA2_Stream7->CR |=  (4U << 25U);
+    /* Reset configuration using the clear mask to wipe old settings */
+    DMA2_Stream7->CR &= ~DMA_SxCR_CLEAR_MASK;
 
-    /* Configure transfer: memory->peripheral, peripheral no-incr, memory incr */
-    DMA2_Stream7->CR &= ~(
-        (3U << 6U)   |  /* DIR */
-        (3U << 16U)  |  /* PSIZE */
-        (3U << 13U)  |  /* MSIZE */
-        (1U << 9U)   |  /* PINC */
-        (1U << 10U)  |  /* MINC */
-        (1U << 8U)   |  /* PFCTRL */
-        (3U << 11U)  |  /* PL */
-        (1U << 18U)  |  /* DBM */
-        (1U << 19U)  |  /* CT */
-        (1U << 20U)  |  /* PBURST */
-        (1U << 21U));   /* MBURST */
-    DMA2_Stream7->CR |= (1U << 6U);  /* DIR = memory-to-peripheral */
-    DMA2_Stream7->CR |= (1U << 10U); /* MINC enable */
+    /* Set configuration: Channel 4, Memory->Peripheral, Memory-Increment */
+    DMA2_Stream7->CR |=  DMA_SxCR_CHSEL_VAL(4U);
+    DMA2_Stream7->CR |=  (DMA_SxCR_DIR_M2P | DMA_SxCR_MINC);
 
     DMA2_Stream7->PAR  = (uint32_t)&USART1->DR;
     DMA2_Stream7->M0AR = (uint32_t)data;
@@ -120,7 +110,7 @@ void Usart1_TransmitDMA(uint8 *data, uint16 len)
     DMA2->HIFCR = DMA_HIFCR_CTCIF7 | DMA_HIFCR_CTEIF7 | DMA_HIFCR_CHTIF7 | DMA_HIFCR_CFEIF7;
 
     /* Enable transfer-complete interrupt */
-    DMA2_Stream7->CR |= (1U << 4U);
+    DMA2_Stream7->CR |= DMA_SxCR_TCIE;
 
     /* Enable the stream to start transfer */
     DMA2_Stream7->CR |= DMA_SxCR_EN;

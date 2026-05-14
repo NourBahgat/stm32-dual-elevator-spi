@@ -47,6 +47,30 @@ void Telemetry_Init(void)
  * Fixed-point, no floating-point needed.
  * Checksum = XOR of (state, floor, duty, flags) for basic error detection.
  * ======================================================================== */
+static uint16 prv_AppendString(char *buf, uint16 idx, const char *str) {
+    while (*str != '\0') {
+        buf[idx++] = *str++;
+    }
+    return idx;
+}
+
+static uint16 prv_AppendUint8(char *buf, uint16 idx, uint8 val) {
+    if (val >= 100) {
+        buf[idx++] = (char)('0' + (val / 100));
+        val %= 100;
+        buf[idx++] = (char)('0' + (val / 10));
+        val %= 10;
+        buf[idx++] = (char)('0' + val);
+    } else if (val >= 10) {
+        buf[idx++] = (char)('0' + (val / 10));
+        val %= 10;
+        buf[idx++] = (char)('0' + val);
+    } else {
+        buf[idx++] = (char)('0' + val);
+    }
+    return idx;
+}
+
 void Telemetry_BuildFrame(
     TelemetryFrame_t *frame,
     uint8 fsm_state,
@@ -55,18 +79,27 @@ void Telemetry_BuildFrame(
     uint8 flags
 )
 {
+    uint16 idx = 0;
     if (frame == 0) {
         return;  /* Safety check */
     }
 
-    frame->sync      = 0xAA;           /* Sync byte (sync pattern) */
-    frame->fsm_state = fsm_state;      /* FSM state (0-5) */
-    frame->floor     = floor;          /* Floor (1-4) */
-    frame->motor_duty = motor_duty;    /* Duty (0-100) */
-    frame->flags     = flags;          /* Packed system flags */
+    /* Manually build: [TEL] ST:1 FL:2 PWM:75 FG:0\r\n */
+    idx = prv_AppendString(frame->data, idx, "[TEL] ST:");
+    idx = prv_AppendUint8(frame->data, idx, fsm_state);
+    
+    idx = prv_AppendString(frame->data, idx, " FL:");
+    idx = prv_AppendUint8(frame->data, idx, floor);
+    
+    idx = prv_AppendString(frame->data, idx, " PWM:");
+    idx = prv_AppendUint8(frame->data, idx, motor_duty);
+    
+    idx = prv_AppendString(frame->data, idx, " FG:");
+    idx = prv_AppendUint8(frame->data, idx, flags);
+    
+    idx = prv_AppendString(frame->data, idx, "\r\n");
 
-    /* Checksum = XOR of data bytes (excludes SYNC) */
-    frame->checksum  = fsm_state ^ floor ^ motor_duty ^ frame->flags;
+    frame->len = idx;
 }
 
 /* ========================================================================
@@ -91,7 +124,7 @@ uint8 Telemetry_SendDMA(const TelemetryFrame_t *frame)
  * callback `Telemetry_DMA_CompleteCallback()` defined in main.c.
  */
 #ifdef TELEMETRY_USE_REG_DMA
-    Usart1_TransmitDMA((uint8 *)frame, TELEMETRY_FRAME_LEN);
+    Usart1_TransmitDMA((uint8 *)frame->data, frame->len);
     return 1;
 #endif
 
@@ -113,7 +146,7 @@ uint8 Telemetry_SendDMA(const TelemetryFrame_t *frame)
     telemetry_active = 1U;
     telemetry_tx_index = 0U;
     uart_busy = 1U;
-    (void)HAL_UART_Transmit_DMA(&huart1, (uint8_t *)&telemetry_active_frame, TELEMETRY_FRAME_LEN);
+    (void)HAL_UART_Transmit_DMA(&huart1, (uint8_t *)telemetry_active_frame.data, telemetry_active_frame.len);
     return 1;
 #else
     if (telemetry_active != 0U && telemetry_pending != 0U) {
@@ -184,12 +217,12 @@ void Telemetry_Tick(void)
         telemetry_tx_index = 0U;
     }
 
-    data = (uint8 *)&telemetry_active_frame;
+    data = (uint8 *)telemetry_active_frame.data;
 
     if (Usart1_TransmitByte(data[telemetry_tx_index]) == Tx_OK) {
         telemetry_tx_index++;
 
-        if (telemetry_tx_index >= TELEMETRY_FRAME_LEN) {
+        if (telemetry_tx_index >= telemetry_active_frame.len) {
             telemetry_active = 0U;
             telemetry_tx_index = 0U;
 
@@ -219,7 +252,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
             telemetry_active = 1U;
             telemetry_tx_index = 0U;
             uart_busy = 1U;
-            (void)HAL_UART_Transmit_DMA(&huart1, (uint8_t *)&telemetry_active_frame, TELEMETRY_FRAME_LEN);
+            (void)HAL_UART_Transmit_DMA(&huart1, (uint8_t *)telemetry_active_frame.data, telemetry_active_frame.len);
         }
     }
 }

@@ -122,58 +122,49 @@ void IPC_UnpackFrame(const uint8 *RxBuf, Ipc_ElevatorState *RemoteState)
   RemoteState->Flags     = RxBuf[SPI_IDX_FLAGS];
 }
 
-void IPC_OnFrameReceived(uint8 *RxBuf)
-{
-  if (IPC_ValidateFrame(RxBuf) == SPI_OK) {
-    IPC_UnpackFrame(RxBuf, (Ipc_ElevatorState *)&ipc_RemoteState);
-    ipc_TimeoutCounter = 0U; 
-    Ipc_CommFault = 0U;
-
 #if IS_MASTER()
-        /* The full-duplex exchange completed successfully, so the Master
-         * can drop any pending dispatch request it had encoded in its last
-         * TX frame. This prevents the same hall-call from being re-sent on
-         * subsequent 50 ms IPC_MasterTick() cycles. */
-        if (localState.Flags & IPC_FLAG_DISPATCH_REQ) {
-            Usart1_TransmitString("[IPC] MASTER: ACK dispatch\r\n");
-            Enter_Critical();
-            localState.Flags &= (uint8)(~IPC_FLAG_DISPATCH_REQ);
-            Exit_Critical();
-        }
-        Spi1_DeassertCS();
-#endif
-
-#if IS_SLAVE()
-    ipc_SlaveTimeoutCounter = 0U;
-    if (ipc_RemoteState.Flags & IPC_FLAG_DISPATCH_REQ) {
-        uint8 target_floor = IPC_FLAGS_DECODE_FLOOR(ipc_RemoteState.Flags);
-        Usart1_TransmitString("[IPC] SLAVE: DISPATCH -> Floor ");
-        char fStr[2] = { (char)('0' + target_floor), '\0' };
-        Usart1_TransmitString(fStr);
-        Usart1_TransmitString("\r\n");
-        Elevator_FSM_RequestFloor(target_floor);
-    }
-#endif
-  }
-  else {
-    /* Checksum / header mismatch — log the raw bytes so we can spot shifts */
-    const char *who = IS_MASTER() ? "MASTER" : "SLAVE ";
-    Usart1_TransmitString("[IPC] ");
-    Usart1_TransmitString(who);
-    Usart1_TransmitString(": BAD FRAME! (Resyncing...)\r\n");
-    
-    /* Hardware Resync: Reset SPI peripheral to clear internal shift registers */
-#if IS_MASTER()
+static void prv_ProcessMasterFrame(void) {
+    localState.Flags &= ~(IPC_FLAG_DISPATCH_REQ); /* Clear dispatch flag */
+    Spi1_DeassertCS();
+}
+static void prv_HandleMasterError(void) {
     Spi1_DeassertCS();
     Spi1_Init(SPI_MASTER, SPI_IDLE_LOW, SPI_SAMPLE_FIRST_TRANSITION);
+}
 #else
+static void prv_ProcessSlaveFrame(void) {
+    ipc_SlaveTimeoutCounter = 0U;
+    if (ipc_RemoteState.Flags & IPC_FLAG_DISPATCH_REQ) {
+        Elevator_FSM_RequestFloor(IPC_FLAGS_DECODE_FLOOR(ipc_RemoteState.Flags));
+    }
+}
+static void prv_HandleSlaveError(void) {
     Spi1_Init(SPI_SLAVE, SPI_IDLE_LOW, SPI_SAMPLE_FIRST_TRANSITION);
+}
 #endif
-  }
+
+void IPC_OnFrameReceived(uint8 *RxBuf)
+{
+    if (IPC_ValidateFrame(RxBuf) == SPI_OK) {
+        IPC_UnpackFrame(RxBuf, (Ipc_ElevatorState *)&ipc_RemoteState);
+        ipc_TimeoutCounter = 0U; 
+        Ipc_CommFault = 0U;
+#if IS_MASTER()
+        prv_ProcessMasterFrame();
+#else
+        prv_ProcessSlaveFrame();
+#endif
+    } else {
+#if IS_MASTER()
+        prv_HandleMasterError();
+#else
+        prv_HandleSlaveError();
+#endif
+    }
 
 #if IS_SLAVE()
-  IPC_PackFrame(ipc_TxBuf, (const Ipc_ElevatorState *)&localState);
-  Spi1_StartTransfer(ipc_TxBuf, ipc_RxBuf);
+    IPC_PackFrame(ipc_TxBuf, (const Ipc_ElevatorState *)&localState);
+    Spi1_StartTransfer(ipc_TxBuf, ipc_RxBuf);
 #endif
 }
 
