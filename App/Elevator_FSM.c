@@ -200,7 +200,7 @@ static void ISR_EmergencyStop(void)
     Exit_Critical();                /* re-enable interrupts                 */
 }
 
-/* ── Reset Button (PB11) — software reset after emergency ─────────────── */
+/* ── Reset Button (PB15) — software reset after emergency ─────────────── */
 static void ISR_ResetButton(void)
 {
     if (localState.State == FSM_EMERGENCY) {
@@ -252,8 +252,8 @@ void Elevator_FSM_Init(uint8 startFloor)
     Gpio_Init(GPIO_B, 12U, GPIO_INPUT, GPIO_PULL_UP);
     Gpio_Init(GPIO_B, 13U, GPIO_INPUT, GPIO_PULL_UP);
 
-    /* ── GPIO: Reset Button on PB11 (input, internal pull-up) ─────────── */
-    Gpio_Init(GPIO_B, 11U, GPIO_INPUT, GPIO_PULL_UP);
+    /* ── GPIO: Reset Button on PA11 (input, internal pull-up) ─────────── */
+    Gpio_Init(GPIO_A, 11U, GPIO_INPUT, GPIO_PULL_UP);
 
     /* ── GPIO: Emergency Stop on PA15 (input, internal pull-up) ──────── */
     Gpio_Init(GPIO_A, 15U, GPIO_INPUT, GPIO_PULL_UP);
@@ -270,8 +270,8 @@ void Elevator_FSM_Init(uint8 startFloor)
     Exti_Init(EXTI_LINE_12, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_Sensor_F3);
     Exti_Init(EXTI_LINE_13, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_Sensor_F4);
 
-    /* ── EXTI: Reset Button — falling edge ─────────────────────────────── */
-    Exti_Init(EXTI_LINE_11, EXTI_PORT_B, EXTI_EDGE_FALLING, ISR_ResetButton);
+    /* ── EXTI: Reset Button (PA11) — falling edge ─────────────────────── */
+    Exti_Init(EXTI_LINE_11, EXTI_PORT_A, EXTI_EDGE_FALLING, ISR_ResetButton);
 
     /* ── EXTI: Emergency Stop — falling edge ───────────────────────────── */
     Exti_Init(EXTI_LINE_15, EXTI_PORT_A, EXTI_EDGE_FALLING, ISR_EmergencyStop);
