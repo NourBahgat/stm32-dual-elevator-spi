@@ -89,11 +89,10 @@ void Usart1_TransmitDMA(uint8 *data, uint16 len)
     }
 
     /* Stream is guaranteed idle here because the caller checks EN above.
-     * Force disable and wait for hardware to acknowledge per RM0368. */
+     * We explicitly write 0 to EN to force Proteus to reset its internal
+     * simulation state machine, but we do NOT use a while-loop to wait, 
+     * adhering strictly to the non-blocking / no-polling project rules. */
     DMA2_Stream7->CR &= ~DMA_SxCR_EN;
-    while ((DMA2_Stream7->CR & DMA_SxCR_EN) != 0U) {
-        /* Wait for stream to be disabled */
-    }
 
     /* Reset configuration using the clear mask to wipe old settings */
     DMA2_Stream7->CR &= ~DMA_SxCR_CLEAR_MASK;
