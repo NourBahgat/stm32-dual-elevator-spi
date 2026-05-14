@@ -14,6 +14,8 @@
         [ELEV_EMERGENCY]   = 0,
         [ELEV_DOORS_CLOSING] = 0
     };
+    // StateToDuty maps FSM states to target PWM duty cycles.
+    //  This decouples the FSM logic from the motor control logic and allows easy tuning of speeds for each state.
 
     static uint8 StateToDuty(ElevatorState_t state)
     {
@@ -60,6 +62,7 @@ void PwmScheduler_UpdateState(PwmContext_t *ctx, ElevatorState_t state)
 
     /* Start ramp only if needed */
     if (ctx->target_duty != ctx->current_duty)
+    // use ramp to reach target duty
         ctx->ramp_active = 1;
     else
         ctx->ramp_active = 0;
@@ -71,6 +74,7 @@ void PwmScheduler_UpdateState(PwmContext_t *ctx, ElevatorState_t state)
  * ========================================================= */
 void PwmScheduler_Tick(PwmContext_t *ctx)
 {
+    // check if emergency stop is active and handle it immediately
     /* Emergency handling */
     if (ctx->emergency_flag)
     {

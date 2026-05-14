@@ -143,13 +143,6 @@ void Application_100ms_Tick(void)
         }
     }
 #endif
-
-    /* Print Local Queue frequently (every 100ms) */
-    if (IS_MASTER()) {
-        Elevator_FSM_PrintQueue((const Ipc_ElevatorState *)&fsm_snapshot, "[Master]");
-    } else {
-        Elevator_FSM_PrintQueue((const Ipc_ElevatorState *)&fsm_snapshot, "[Slave ]");
-    }
 }
 
 /* =========================================================
@@ -157,6 +150,13 @@ void Application_100ms_Tick(void)
  * ========================================================= */
 void Application_500ms_Tick(void)
 {
+    /* 1. Terminal Output (Local Queue status) */
+    if (IS_MASTER()) {
+        Elevator_FSM_PrintQueue((const Ipc_ElevatorState *)&fsm_snapshot, "[Master]");
+    } else {
+        Elevator_FSM_PrintQueue((const Ipc_ElevatorState *)&fsm_snapshot, "[Slave ]");
+    }
+
     /* 2. Telemetry (DMA safe) */
     if (dma_busy)
         return;
