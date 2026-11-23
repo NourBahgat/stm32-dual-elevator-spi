@@ -64,5 +64,5 @@ Load each image into its MCU in the Proteus schematic.
 |---|---|
 | Nour Bahgat | Project setup and build system; driver layer (RCC, GPIO, NVIC, EXTI, Timer, PWM, USART, ring buffer); non-blocking SPI driver and the IPC packet frame; watchdog module; communication-fault trigger; master/slave integration and debugging (SPI ISR, slave pre-loading, DMA stabilisation, simulation timing); driver-test firmware; interrupt-priority documentation |
 | Rahma Fathy | Telemetry subsystem with DMA-based UART; PWM motor control and scheduler; system scheduler and initialisation |
-| Farida Hesham | Dispatcher (task-allocation algorithm), hall-call EXTI handling, comm-fault fallback logic, packet definition table |
+| Farida Abdelrahman | Dispatcher (task-allocation algorithm), hall-call EXTI handling, comm-fault fallback logic, packet definition table |
 | Nour Allah Hassan | Elevator finite-state machine |
