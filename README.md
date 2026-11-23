@@ -17,6 +17,19 @@ Two STM32F401 microcontrollers each control one elevator and work together over 
 - **Prioritised interrupts:** emergency stop > SPI and scheduler > telemetry > DMA completion (see [`INTERRUPT_PRIORITY_MAPPING.md`](INTERRUPT_PRIORITY_MAPPING.md)).
 - **Cooperative scheduler** with 10 / 50 / 100 / 500 ms tasks, driven by SysTick (1 ms) and TIM5.
 
+## Hardware (Proteus)
+
+![Proteus schematic](docs/proteus_schematic.png)
+
+The schematic has two STM32F401VE MCUs: U1 is the master and controls elevator A, and U2 is the slave and controls elevator B. They are linked over SPI1 (SCK, MISO, MOSI and chip select). Each elevator has:
+- a virtual UART terminal for telemetry and debug logs;
+- four cabin request buttons, one per floor;
+- four cabin floor sensors, simulated with push buttons;
+- an emergency-stop button;
+- a yellow LED showing the motor (PWM) output.
+
+The six hallway call buttons (floors 1–3 up, floors 2–4 down) are wired to the master only, because the master's dispatcher assigns each call to a car.
+
 ## SPI frame (8 bytes)
 
 | Byte | Field | Notes |
