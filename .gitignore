@@ -34,3 +34,10 @@ build-master/.ninja_deps
 build-master/.ninja_log
 build-slave/.ninja_deps
 build-slave/.ninja_log
+
+# Local build folders
+build*/
+cmake-build-*/
+.idea/
+Project Backups/
+*.workspace
